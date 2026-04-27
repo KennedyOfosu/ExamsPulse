@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ExamsPulse</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════
+     AUTH VIEW
+══════════════════════════════════════ -->
+<div id="auth-view" class="auth-view">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <span class="auth-logo">⚡</span>
+      <span class="auth-title">ExamsPulse</span>
+    </div>
+    <p class="auth-tagline">AI-powered exam preparation</p>
+
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="tab-signin" onclick="switchAuthTab('signin')">Sign In</button>
+      <button class="auth-tab" id="tab-signup" onclick="switchAuthTab('signup')">Sign Up</button>
+    </div>
+
+    <!-- Demo login hint -->
+    <div class="demo-hint">
+      <span class="demo-hint-label">🎓 Try it instantly</span>
+      <button class="demo-fill-btn" onclick="fillDemo()">Use Demo Account</button>
+    </div>
+
+    <!-- Sign In Form -->
+    <form id="signin-form" class="auth-form" onsubmit="handleSignIn(event)">
+      <div class="field-group">
+        <label class="field-label" for="si-email">Email</label>
+        <input type="email" id="si-email" class="field-input" placeholder="you@university.edu" required />
+      </div>
+      <div class="field-group">
+        <label class="field-label" for="si-password">Password</label>
+        <input type="password" id="si-password" class="field-input" placeholder="Enter your password" required />
+      </div>
+      <div class="auth-error hidden" id="signin-error"></div>
+      <button type="submit" class="auth-submit-btn">Sign In</button>
+      <p class="auth-switch">No account? <a href="#" onclick="switchAuthTab('signup')">Sign Up</a></p>
+    </form>
+
+    <!-- Sign Up Form -->
+    <form id="signup-form" class="auth-form hidden" onsubmit="handleSignUp(event)">
+      <div class="field-group">
+        <label class="field-label" for="su-name">Full Name</label>
+        <input type="text" id="su-name" class="field-input" placeholder="Your name" required />
+      </div>
+      <div class="field-group">
+        <label class="field-label" for="su-email">Email</label>
+        <input type="email" id="su-email" class="field-input" placeholder="you@university.edu" required />
+      </div>
+      <div class="field-group">
+        <label class="field-label" for="su-password">Password</label>
+        <input type="password" id="su-password" class="field-input" placeholder="Min 6 characters" required minlength="6" />
+      </div>
+      <div class="auth-error hidden" id="signup-error"></div>
+      <button type="submit" class="auth-submit-btn">Create Account</button>
+      <p class="auth-switch">Already have an account? <a href="#" onclick="switchAuthTab('signin')">Sign In</a></p>
+    </form>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     APP VIEW
+══════════════════════════════════════ -->
+<div id="app-view" class="app-view hidden">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-top">
+      <div class="sidebar-brand">
+        <span class="sidebar-logo">⚡</span>
+        <span class="sidebar-name">ExamsPulse</span>
+      </div>
+      <button class="new-session-btn" id="new-session-btn" onclick="startNewSession()">
+        <span class="nsb-icon">＋</span>
+        <span>New Session</span>
+      </button>
+    </div>
+
+    <div class="sidebar-sessions">
+      <div class="sessions-label">Recent Sessions</div>
+      <div id="sessions-list" class="sessions-list"></div>
+    </div>
+
+    <div class="sidebar-bottom">
+      <div class="user-row">
+        <div class="user-avatar" id="user-avatar">S</div>
+        <div class="user-info">
+          <div class="user-name" id="user-name">Student</div>
+          <div class="user-email" id="user-email">student@email.com</div>
+        </div>
+        <button class="logout-btn" onclick="handleLogout()" title="Logout">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- SIDEBAR TOGGLE (mobile) -->
+  <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()">☰</button>
+
+  <!-- MAIN CONTENT -->
+  <main class="main-content" id="main-content">
+
+    <!-- ── HOME VIEW (Claude-style) ── -->
+    <div class="home-view" id="home-view">
+
+      <!-- Greeting -->
+      <div class="home-greeting">
+        <div class="home-logo">⚡</div>
+        <h1 class="home-title">What are you studying, <span id="greeting-name">there</span>?</h1>
+      </div>
+
+      <!-- Input Card -->
+      <div class="input-card" id="input-card">
+
+        <!-- File chip row (shown after upload) -->
+        <div class="file-chip-row hidden" id="file-chip-row">
+          <div class="file-chip" id="file-chip">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span class="file-chip-name" id="file-chip-name">document.pdf</span>
+            <button class="file-chip-remove" onclick="removeFile()" title="Remove file">✕</button>
+          </div>
+        </div>
+
+        <!-- Main textarea -->
+        <textarea
+          id="home-notes"
+          class="home-textarea"
+          placeholder="Upload a file above, or paste your lecture notes here…"
+        ></textarea>
+
+        <!-- Bottom toolbar -->
+        <div class="card-toolbar">
+          <div class="card-toolbar-left">
+            <!-- + Upload button (like Claude) -->
+            <button class="card-plus-btn" id="card-plus-btn" onclick="triggerFileUpload()" title="Upload lecture file (PDF, PPTX, TXT)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+            <span class="home-char-count" id="home-char-count">0</span>
+          </div>
+          <div class="card-toolbar-right">
+            <!-- Settings (API key + course name) — hidden toggle -->
+            <button class="card-settings-btn" id="card-settings-btn" onclick="toggleSettingsPanel()" title="Settings">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+            </button>
+            <!-- Send button -->
+            <button class="card-send-btn" id="home-gen-btn" onclick="handleHomeGenerate()">
+              <div class="home-gen-spinner hidden" id="home-gen-spinner"></div>
+              <svg id="home-send-icon" width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Settings panel (hidden, shown on ⚙ click) -->
+        <div class="settings-panel hidden" id="settings-panel">
+          <div class="settings-panel-inner">
+            <div class="settings-field-row">
+              <label class="settings-lbl">Course</label>
+              <input type="text" id="home-course" class="settings-input-field" placeholder="e.g. Computer Networks…" />
+            </div>
+            <div class="settings-field-row">
+              <label class="settings-lbl">API Key</label>
+              <div class="settings-api-wrap">
+                <input type="password" id="home-api-key" class="settings-input-field" placeholder="Gemini API key…" />
+                <button class="settings-key-vis" id="card-key-toggle" onclick="toggleHomeKeyVis()" title="Show key">👁</button>
+              </div>
+            </div>
+            <p class="settings-hint">Free key → <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">aistudio.google.com</a></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hidden file input -->
+      <input type="file" id="file-input" class="hidden" accept=".pdf,.txt,.pptx,.docx,.md" onchange="handleFileSelect(event)" />
+
+      <!-- Exam type chips -->
+      <div class="exam-chips-row">
+        <button class="exam-chip active" data-type="mixed" onclick="selectChip(this)">
+          <span>🎯</span> Mixed
+        </button>
+        <button class="exam-chip" data-type="mcq" onclick="selectChip(this)">
+          <span>📝</span> MCQ
+        </button>
+        <button class="exam-chip" data-type="essay" onclick="selectChip(this)">
+          <span>📄</span> Essay
+        </button>
+        <button class="exam-chip" data-type="short" onclick="selectChip(this)">
+          <span>✍️</span> Short Answer
+        </button>
+      </div>
+
+      <div class="home-error hidden" id="home-error"></div>
+    </div>
+
+    <!-- ── RESULTS VIEW ── -->
+
+    <div class="results-view hidden" id="results-view">
+
+      <!-- Results Header -->
+      <div class="rv-header">
+        <div class="rv-header-left">
+          <button class="back-btn" onclick="startNewSession()">← New Session</button>
+          <div class="rv-title-group">
+            <h2 class="rv-title" id="rv-title">Session Title</h2>
+            <div class="rv-meta" id="rv-meta">MCQ · 10 Questions</div>
+          </div>
+        </div>
+        <div class="rv-header-right">
+          <button class="rv-action-btn" id="retry-btn" onclick="handleRetry()">🔄 Retry</button>
+          <button class="rv-action-btn" id="download-btn" onclick="handleDownload()">📥 Download</button>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="rv-tabs" id="rv-tabs">
+        <button class="rv-tab active" data-tab="mcq" onclick="switchResultTab(this)">📝 MCQ</button>
+        <button class="rv-tab" data-tab="short" onclick="switchResultTab(this)">✍️ Short</button>
+        <button class="rv-tab" data-tab="essay" onclick="switchResultTab(this)">📄 Essay</button>
+        <button class="rv-tab" data-tab="fill" onclick="switchResultTab(this)">🔲 Fill</button>
+        <button class="rv-tab" data-tab="topics" onclick="switchResultTab(this)">🎯 Topics</button>
+      </div>
+
+      <!-- Question Feed -->
+      <div class="rv-body" id="rv-body">
+        <!-- Loading -->
+        <div class="rv-loading" id="rv-loading">
+          <div class="rv-loading-inner">
+            <div class="spinner-ring"></div>
+            <div class="rv-loading-text">Generating your exam questions…</div>
+            <div class="loading-steps" id="loading-steps">
+              <div class="ls" id="ls1">📚 Reading your notes</div>
+              <div class="ls" id="ls2">🔍 Identifying key concepts</div>
+              <div class="ls" id="ls3">🧠 Predicting exam questions</div>
+              <div class="ls" id="ls4">✍️ Writing model answers</div>
+              <div class="ls" id="ls5">🎯 Ranking by likelihood</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Question Panes -->
+        <div id="mcq-pane" class="q-pane"></div>
+        <div id="short-pane" class="q-pane hidden"></div>
+        <div id="essay-pane" class="q-pane hidden"></div>
+        <div id="fill-pane" class="q-pane hidden"></div>
+        <div id="topics-pane" class="q-pane hidden"></div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
