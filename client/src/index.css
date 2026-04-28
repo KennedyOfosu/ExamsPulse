@@ -327,8 +327,9 @@ body.sb-collapsed .main-content {
   z-index: 2;
 }
 .login-brand-img {
-  height: 44px;
+  height: 80px; /* Increased for better visibility */
   width: auto;
+  max-width: 300px;
   object-fit: contain;
 }
 

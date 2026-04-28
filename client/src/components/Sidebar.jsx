@@ -38,7 +38,7 @@ export default function Sidebar({ user, sessions = [], collapsed, onCollapse, th
       <div className={`sidebar-top ${collapsed ? 'sidebar-top--collapsed' : 'sidebar-top--expanded'}`}>
         {!collapsed && (
           <div className="sidebar-logo">
-            <img src={logo} alt="Cerebra" className="sidebar-logo-img" style={{ height: '32px', width: 'auto', objectFit: 'contain' }} />
+            <img src={logo} alt="Cerebra" className="sidebar-logo-img" style={{ height: '60px', width: 'auto', maxWidth: '180px', objectFit: 'contain' }} />
           </div>
         )}
         <button
