@@ -73,7 +73,7 @@ export default function Register() {
             id="reg-password"
             type="password"
             className="login-input"
-            placeholder="Password (min. 6 characters)"
+            placeholder="Create a new password (min. 6 characters)"
             value={password}
             onChange={e => setPassword(e.target.value)}
             required
