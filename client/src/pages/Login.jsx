@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase.js';
+import logo from '../assets/logo.png';
 
 export default function Login() {
   const [email, setEmail]       = useState('');
@@ -32,8 +33,7 @@ export default function Login() {
 
       {/* Brand — pinned to the top, well above the form */}
       <div className="login-brand">
-        <span className="login-brand-icon">⚡</span>
-        <span className="login-brand-name">ExamsPulse</span>
+        <img src={logo} alt="Cerebra" className="login-brand-img" />
       </div>
 
       {/* Centered form */}

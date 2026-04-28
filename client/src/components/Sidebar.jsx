@@ -1,5 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase.js';
+import logo from '../assets/logo.png';
 
 /* ── Icon components ── */
 const IconNew       = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>;
@@ -37,8 +38,7 @@ export default function Sidebar({ user, sessions = [], collapsed, onCollapse, th
       <div className={`sidebar-top ${collapsed ? 'sidebar-top--collapsed' : 'sidebar-top--expanded'}`}>
         {!collapsed && (
           <div className="sidebar-logo">
-            <span className="sidebar-logo-icon">⚡</span>
-            <span className="sidebar-logo-text">ExamsPulse</span>
+            <img src={logo} alt="Cerebra" className="sidebar-logo-img" style={{ height: '32px', width: 'auto', objectFit: 'contain' }} />
           </div>
         )}
         <button

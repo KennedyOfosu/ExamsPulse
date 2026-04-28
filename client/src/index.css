@@ -52,10 +52,7 @@
   --sb-email:     #888888;
   --sb-scroll:    #cccccc;
 }
-  --shadow-sm: 0 1px 3px rgba(0,0,0,.06);
-  --shadow-md: 0 4px 16px rgba(99,102,241,.10);
-  --shadow-lg: 0 10px 40px rgba(99,102,241,.15);
-}
+
 
 html, body { height: 100%; overflow: hidden; }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -326,13 +323,13 @@ body.sb-collapsed .main-content {
   position: absolute;
   top: 10%;
   left: 50%; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; justify-content: center;
   z-index: 2;
 }
-.login-brand-icon { font-size: 20px; }
-.login-brand-name {
-  font-size: 18px; font-weight: 800;
-  color: #e4e4e4; letter-spacing: -.3px;
+.login-brand-img {
+  height: 44px;
+  width: auto;
+  object-fit: contain;
 }
 
 /* Error */
