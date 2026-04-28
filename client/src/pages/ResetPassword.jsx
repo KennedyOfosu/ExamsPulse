@@ -109,7 +109,7 @@ export default function ResetPassword() {
       </div>
 
       {/* Footer */}
-      <p className="login-footer">© {new Date().getFullYear()} ExamsPulse. All rights reserved.</p>
+      <p className="login-footer">© {new Date().getFullYear()} Cerebra. All rights reserved.</p>
     </div>
   );
 }
