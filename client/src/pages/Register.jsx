@@ -17,7 +17,10 @@ export default function Register() {
     setLoading(true); setError('');
     const { error: err } = await supabase.auth.signUp({
       email, password,
-      options: { data: { full_name: name } },
+      options: { 
+        data: { full_name: name },
+        emailRedirectTo: `${window.location.origin}/login`
+      },
     });
     if (err) { setError(err.message); setLoading(false); }
     else navigate('/');
