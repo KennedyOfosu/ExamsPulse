@@ -28,7 +28,11 @@ function AuthHandler({ setUser }) {
 export default function App() {
   const [user, setUser] = useState(undefined);
   const [theme, setTheme] = useState(() => localStorage.getItem('ep-theme') || 'dark');
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('ep-sidebar') === 'true');
+  const [collapsed, setCollapsed] = useState(() => {
+    const saved = localStorage.getItem('ep-sidebar');
+    if (saved !== null) return saved === 'true';
+    return window.innerWidth <= 900;
+  });
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);

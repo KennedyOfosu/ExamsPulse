@@ -1109,3 +1109,80 @@ body.sb-collapsed .main-content {
 .qc-answer-box { background: var(--surface-2); border-radius: var(--radius-sm); padding: 16px 18px; }
 .qc-answer-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--text-muted); margin-bottom: 8px; }
 .qc-answer-text { font-size: 14px; color: var(--text-primary); line-height: 1.75; }
+
+/* -- Mobile & Tablet Optimizations -- */
+.mobile-nav-toggle {
+  display: none;
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 1001;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+}
+
+.sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(2px);
+  z-index: 998;
+}
+
+@media (max-width: 900px) {
+  /* Hide sidebar off-screen by default when collapsed */
+  .sidebar {
+    transform: translateX(-100%);
+    width: 260px !important;
+    z-index: 1000;
+  }
+  
+  /* When NOT collapsed, it means it is open on mobile */
+  body:not(.sb-collapsed) .sidebar {
+    transform: translateX(0);
+    box-shadow: 4px 0 24px rgba(0,0,0,0.5);
+  }
+  
+  /* Show hamburger toggle */
+  .mobile-nav-toggle {
+    display: flex;
+  }
+  
+  /* Show backdrop when sidebar is open */
+  body:not(.sb-collapsed) .sidebar-backdrop {
+    display: block;
+  }
+  
+  /* Expand main content to full width and add top padding for hamburger */
+  .main-content,
+  body.sb-collapsed .main-content {
+    margin-left: 0 !important;
+    width: 100vw !important;
+  }
+  
+  /* Add top padding to arena and session layout so they dont hide behind hamburger */
+  .arena-center {
+    padding-top: 76px;
+  }
+  
+  /* Adjust login card sizing */
+  .auth-form-panel {
+    padding: 20px;
+  }
+  .auth-hero {
+    display: none; /* Hide hero on small screens if it exists */
+  }
+  .auth-page {
+    grid-template-columns: 1fr;
+  }
+}
+

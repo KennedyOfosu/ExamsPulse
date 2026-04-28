@@ -32,87 +32,97 @@ export default function Sidebar({ user, sessions = [], collapsed, onCollapse, th
   const signOut   = async () => { await supabase.auth.signOut(); navigate('/login'); };
 
   return (
-    <aside className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''}`}>
+    <>
+      {/* Mobile nav toggle */}
+      <button className="mobile-nav-toggle" onClick={onCollapse} title="Menu">
+        <IconPanel collapsed={collapsed} />
+      </button>
 
-      {/* ── Top: logo + panel toggle ── */}
-      <div className={`sidebar-top ${collapsed ? 'sidebar-top--collapsed' : 'sidebar-top--expanded'}`}>
-        {!collapsed && (
-          <div className="sidebar-logo">
-            <img src={logo} alt="Cerebra" className="sidebar-logo-img" />
-          </div>
-        )}
-        <button
-          className="sidebar-panel-btn"
-          onClick={onCollapse}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          <IconPanel collapsed={collapsed} />
-        </button>
-      </div>
+      {/* Backdrop for mobile */}
+      {!collapsed && <div className="sidebar-backdrop" onClick={onCollapse} />}
 
-      {/* ── New Session ── */}
-      <div className="sidebar-nav">
-        <a
-          className="sidebar-nav-item"
-          href="/"
-          title="New Session"
-        >
-          <span className="sb-icon"><IconNew /></span>
-          {!collapsed && <span className="sb-label">New Session</span>}
-        </a>
+      <aside className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''}`}>
 
-        {/* ── Recent Sessions ── */}
-        {sessions.length > 0 && (
-          <>
-            {!collapsed && <div className="sidebar-section-title">Recent</div>}
-            {sessions.slice(0, 8).map(s => (
-              <a
-                key={s.id}
-                href={`/session/${s.id}`}
-                className={`sidebar-nav-item ${location.pathname === `/session/${s.id}` ? 'active' : ''}`}
-                title={s.course_name}
-              >
-                <span className="sb-icon"><IconSession /></span>
-                {!collapsed && (
-                  <>
-                    <span className="sb-label">{s.course_name}</span>
-                    <span className="sb-meta">
-                      {new Date(s.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                    </span>
-                  </>
-                )}
-              </a>
-            ))}
-          </>
-        )}
-      </div>
-
-      {/* ── Footer ── */}
-      <div className="sidebar-footer">
-        <button
-          className="sidebar-footer-btn"
-          onClick={onThemeToggle}
-          title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
-        >
-          <span className="sb-icon">{theme === 'dark' ? <IconSun /> : <IconMoon />}</span>
-          {!collapsed && <span className="sb-label">{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>}
-        </button>
-
-        <div className="sidebar-user" title={`${name} · ${user?.email}`}>
-          <div className="sidebar-avatar">{letter}</div>
+        {/* ── Top: logo + panel toggle ── */}
+        <div className={`sidebar-top ${collapsed ? 'sidebar-top--collapsed' : 'sidebar-top--expanded'}`}>
           {!collapsed && (
+            <div className="sidebar-logo">
+              <img src={logo} alt="Cerebra" className="sidebar-logo-img" />
+            </div>
+          )}
+          <button
+            className="sidebar-panel-btn"
+            onClick={onCollapse}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            <IconPanel collapsed={collapsed} />
+          </button>
+        </div>
+
+        {/* ── New Session ── */}
+        <div className="sidebar-nav">
+          <a
+            className="sidebar-nav-item"
+            href="/"
+            title="New Session"
+          >
+            <span className="sb-icon"><IconNew /></span>
+            {!collapsed && <span className="sb-label">New Session</span>}
+          </a>
+
+          {/* ── Recent Sessions ── */}
+          {sessions.length > 0 && (
             <>
-              <div className="sidebar-user-info">
-                <div className="sidebar-user-name">{name}</div>
-                <div className="sidebar-user-email">{user?.email}</div>
-              </div>
-              <button className="sidebar-signout-btn" onClick={signOut} title="Sign out">
-                <IconSignOut />
-              </button>
+              {!collapsed && <div className="sidebar-section-title">Recent</div>}
+              {sessions.slice(0, 8).map(s => (
+                <a
+                  key={s.id}
+                  href={`/session/${s.id}`}
+                  className={`sidebar-nav-item ${location.pathname === `/session/${s.id}` ? 'active' : ''}`}
+                  title={s.course_name}
+                >
+                  <span className="sb-icon"><IconSession /></span>
+                  {!collapsed && (
+                    <>
+                      <span className="sb-label">{s.course_name}</span>
+                      <span className="sb-meta">
+                        {new Date(s.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </span>
+                    </>
+                  )}
+                </a>
+              ))}
             </>
           )}
         </div>
-      </div>
-    </aside>
+
+        {/* ── Footer ── */}
+        <div className="sidebar-footer">
+          <button
+            className="sidebar-footer-btn"
+            onClick={onThemeToggle}
+            title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+          >
+            <span className="sb-icon">{theme === 'dark' ? <IconSun /> : <IconMoon />}</span>
+            {!collapsed && <span className="sb-label">{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>}
+          </button>
+
+          <div className="sidebar-user" title={`${name} · ${user?.email}`}>
+            <div className="sidebar-avatar">{letter}</div>
+            {!collapsed && (
+              <>
+                <div className="sidebar-user-info">
+                  <div className="sidebar-user-name">{name}</div>
+                  <div className="sidebar-user-email">{user?.email}</div>
+                </div>
+                <button className="sidebar-signout-btn" onClick={signOut} title="Sign out">
+                  <IconSignOut />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </aside>
+    </>
   );
 }
