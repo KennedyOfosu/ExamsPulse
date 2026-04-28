@@ -151,7 +151,7 @@ label { display: block; font-size: 13px; font-weight: 600; color: var(--text-sec
   display: flex; flex-direction: column;
   position: fixed; top: 0; left: 0;
   width: var(--sidebar-width);
-  height: 100vh; overflow: hidden;
+  height: 100dvh; overflow: hidden;
   z-index: 100;
   transition: var(--sidebar-transition);
   border-right: 1px solid var(--sidebar-border);
@@ -173,9 +173,9 @@ label { display: block; font-size: 13px; font-weight: 600; color: var(--text-sec
   white-space: nowrap; letter-spacing: -.3px; overflow: hidden; text-overflow: ellipsis;
 }
 .sidebar-logo-img {
-  height: 120px; /* Massively increased size */
-  width: auto;
-  max-width: 90%; /* Prevent overlapping sidebar width */
+  height: auto;
+  width: 140px; /* Scale via width to maintain natural height */
+  max-width: 90%;
   object-fit: contain;
 }
 .sidebar-panel-btn {
@@ -1151,8 +1151,11 @@ body.sb-collapsed .main-content {
   }
   
   /* Show hamburger toggle */
-  .mobile-nav-toggle {
+  body.sb-collapsed .mobile-nav-toggle {
     display: flex;
+  }
+  body:not(.sb-collapsed) .mobile-nav-toggle {
+    display: none;
   }
   
   /* Show backdrop when sidebar is open */
