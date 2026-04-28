@@ -1245,7 +1245,7 @@ body.sb-collapsed .main-content {
   width: 100%;
 }
 .landing-nav-logo img {
-  height: 28px; /* Smaller in header */
+  height: 42px; /* Increased from 28px for better visibility */
   width: auto;
   object-fit: contain;
 }

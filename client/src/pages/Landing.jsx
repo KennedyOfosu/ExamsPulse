@@ -32,7 +32,7 @@ export default function Landing() {
         <div className="landing-hero-center">
           <img src={logo} alt="Cerebra Logo" className="landing-hero-logo" />
           <h1 className="landing-title">
-            Experience liftoff with the<br/>next-gen agent platform
+            Study Smarter,<br/>Score Higher
           </h1>
           <p className="landing-subtitle">
             Upload your lecture slides, notes, or textbooks and let our AI generate tailored practice questions instantly. The new way to ace your exams.
