@@ -172,6 +172,12 @@ label { display: block; font-size: 13px; font-weight: 600; color: var(--text-sec
   font-size: 14px; font-weight: 800; color: var(--sb-logo);
   white-space: nowrap; letter-spacing: -.3px; overflow: hidden; text-overflow: ellipsis;
 }
+.sidebar-logo-img {
+  height: 120px; /* Massively increased size */
+  width: auto;
+  max-width: 90%; /* Prevent overlapping sidebar width */
+  object-fit: contain;
+}
 .sidebar-panel-btn {
   background: none; border: none; cursor: pointer;
   color: var(--sb-icon); display: flex; align-items: center; justify-content: center;
@@ -327,10 +333,16 @@ body.sb-collapsed .main-content {
   z-index: 2;
 }
 .login-brand-img {
-  height: 80px; /* Increased for better visibility */
+  height: 220px; /* Massively increased size */
   width: auto;
-  max-width: 300px;
+  max-width: 90vw;
   object-fit: contain;
+}
+
+@media (max-width: 768px) {
+  .login-brand-img {
+    height: 120px; /* Scaled for mobile */
+  }
 }
 
 /* Error */
