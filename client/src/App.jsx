@@ -6,6 +6,7 @@ import Register from './pages/Register.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Session from './pages/Session.jsx';
 import ResetPassword from './pages/ResetPassword.jsx';
+import Landing from './pages/Landing.jsx';
 
 function PrivateRoute({ user, children }) {
   if (user === undefined) return null;
@@ -60,7 +61,7 @@ export default function App() {
         <Route path="/login"          element={user ? <Navigate to="/" replace /> : <Login />} />
         <Route path="/register"       element={user ? <Navigate to="/" replace /> : <Register />} />
         <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/"               element={<PrivateRoute user={user}><Dashboard user={user} {...ui} /></PrivateRoute>} />
+        <Route path="/"               element={user ? <Dashboard user={user} {...ui} /> : <Landing />} />
         <Route path="/session/:id"    element={<PrivateRoute user={user}><Session user={user} {...ui} /></PrivateRoute>} />
       </Routes>
     </BrowserRouter>
