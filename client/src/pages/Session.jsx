@@ -4,7 +4,7 @@ import Sidebar from '../components/Sidebar.jsx';
 import CodeLab from '../components/CodeLab.jsx';
 import api from '../lib/api.js';
 
-const MODE_LABEL = { mcq: 'MCQ', essay: 'Essay', short_answer: 'Short Answer', mixed: 'Mixed' };
+const MODE_LABEL = { mcq: 'MCQ', essay: 'Essay', short_answer: 'Short Answer', mixed: 'Mixed', code: 'Code' };
 
 export default function Session({ user, theme, onThemeToggle, collapsed, onCollapse }) {
   const { id } = useParams();
@@ -16,10 +16,13 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   
-  // Workspace State
+  // Navigation State
   const [selectedId, setSelectedId] = useState(null);
-  const [answerMode, setAnswerMode] = useState('text'); // 'text' | 'code'
+  const [answerMode, setAnswerMode] = useState('text'); 
   const [responses, setResponses] = useState({}); // { [id]: { draft, result, grading } }
+  const [skippedIds, setSkippedIds] = useState(new Set());
+  const [showSummary, setShowSummary] = useState(false);
+  const [expandedBatches, setExpandedBatches] = useState(new Set());
   
   // UI State
   const [deleting, setDeleting] = useState(false);
@@ -27,6 +30,46 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
   const [generatingMore, setGeneratingMore] = useState(false);
   const [moreMode, setMoreMode] = useState('mcq');
   const [moreCount, setMoreCount] = useState(5);
+
+  // Group questions into batches based on timestamp proximity (5s window)
+  const batches = useMemo(() => {
+    if (!session?.questions) return [];
+    const questions = [...session.questions].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    const groups = [];
+    let currentBatch = [];
+    
+    questions.forEach((q, i) => {
+      if (i === 0) {
+        currentBatch.push(q);
+      } else {
+        const prevTime = new Date(questions[i-1].created_at).getTime();
+        const currTime = new Date(q.created_at).getTime();
+        if (currTime - prevTime < 5000) {
+          currentBatch.push(q);
+        } else {
+          groups.push(currentBatch);
+          currentBatch = [q];
+        }
+      }
+    });
+    if (currentBatch.length) groups.push(currentBatch);
+    
+    // Sort groups descending (newest first)
+    return groups.reverse().map((questions, idx) => ({
+      id: `batch-${groups.length - idx}`,
+      name: `Session ${groups.length - idx}`,
+      timestamp: questions[0].created_at,
+      questions,
+      type: questions[0].type
+    }));
+  }, [session]);
+
+  // Expand the latest batch by default
+  useEffect(() => {
+    if (batches.length > 0) {
+      setExpandedBatches(new Set([batches[0].id]));
+    }
+  }, [batches.length]);
 
   useEffect(() => {
     Promise.all([
@@ -38,7 +81,6 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
       setSessions(allRes.data);
       if (sess.questions?.length > 0) {
         setSelectedId(sess.questions[0].id);
-        // Initialize responses for the first question
         setResponses(prev => {
           const initial = {};
           sess.questions.forEach(q => {
@@ -52,15 +94,24 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
     }).finally(() => setLoading(false));
   }, [id]);
 
-  const selectedQuestion = useMemo(() => 
-    session?.questions?.find(q => q.id === selectedId), 
-  [session, selectedId]);
+  const allQuestions = useMemo(() => 
+    session?.questions ? [...session.questions].sort((a, b) => new Date(a.created_at) - new Date(b.created_at)) : []
+  , [session]);
+
+  const currentIndex = allQuestions.findIndex(q => q.id === selectedId);
+  const selectedQuestion = allQuestions[currentIndex];
 
   const handleUpdateDraft = (val) => {
     setResponses(prev => ({
       ...prev,
       [selectedId]: { ...prev[selectedId], draft: val }
     }));
+    // Remove from skipped if they type
+    if (skippedIds.has(selectedId)) {
+      const next = new Set(skippedIds);
+      next.delete(selectedId);
+      setSkippedIds(next);
+    }
   };
 
   const handleSubmit = async () => {
@@ -90,6 +141,36 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
     }
   };
 
+  const handleSkip = () => {
+    setSkippedIds(prev => new Set(prev).add(selectedId));
+    handleNext();
+  };
+
+  const handleNext = () => {
+    if (currentIndex < allQuestions.length - 1) {
+      setSelectedId(allQuestions[currentIndex + 1].id);
+      setShowSummary(false);
+    } else {
+      setShowSummary(true);
+    }
+  };
+
+  const handlePrev = () => {
+    if (currentIndex > 0) {
+      setSelectedId(allQuestions[currentIndex - 1].id);
+      setShowSummary(false);
+    }
+  };
+
+  const toggleBatch = (batchId) => {
+    setExpandedBatches(prev => {
+      const next = new Set(prev);
+      if (next.has(batchId)) next.delete(batchId);
+      else next.add(batchId);
+      return next;
+    });
+  };
+
   const handleDelete = async () => {
     if (!confirm('Delete this session?')) return;
     setDeleting(true);
@@ -110,7 +191,6 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
         ...prev,
         questions: [...prev.questions, ...res.data.questions]
       }));
-      // Initialize new responses
       setResponses(prev => {
         const next = { ...prev };
         res.data.questions.forEach(q => {
@@ -146,100 +226,205 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
         
         {/* ── LEFT PANEL: Workspace ── */}
         <section className="flex-1 flex flex-col p-8 overflow-y-auto border-r border-border bg-surface-1">
-          {selectedQuestion ? (
-            <div className="max-w-4xl w-full mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          {showSummary ? (
+            /* Summary Screen */
+            <div className="max-w-4xl w-full mx-auto space-y-8 animate-in fade-in zoom-in-95 duration-500">
+              <div className="text-center space-y-2">
+                <h1 className="text-3xl font-black tracking-tight text-primary">Session Summary</h1>
+                <p className="text-secondary">Review your progress before finishing.</p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                {allQuestions.map((q, i) => {
+                  const resp = responses[q.id];
+                  const isAnswered = resp?.draft?.trim() || resp?.result;
+                  const isSkipped = skippedIds.has(q.id);
+                  
+                  return (
+                    <div key={q.id} className="bg-surface-2 p-5 rounded-2xl border border-border flex items-center justify-between group hover:border-primary/30 transition-all">
+                      <div className="flex items-center gap-4">
+                        <span className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold border ${
+                          isAnswered ? 'bg-green-500/10 border-green-500/20 text-green-600' :
+                          isSkipped ? 'bg-amber-500/10 border-amber-500/20 text-amber-600' :
+                          'bg-surface-1 border-border text-muted'
+                        }`}>
+                          {i + 1}
+                        </span>
+                        <div>
+                          <p className="text-sm font-bold text-primary line-clamp-1">{q.question}</p>
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-muted">
+                            {isAnswered ? 'Answered' : isSkipped ? 'Skipped' : 'Unanswered'}
+                          </span>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => { setSelectedId(q.id); setShowSummary(false); }}
+                        className="px-4 py-2 bg-surface-1 hover:bg-primary hover:text-white border border-border rounded-lg text-xs font-bold transition-all"
+                      >
+                        Review
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex justify-center pt-8">
+                <button 
+                  onClick={() => navigate('/')}
+                  className="px-10 py-4 bg-primary text-white rounded-2xl font-bold text-sm shadow-xl shadow-primary/20 hover:-translate-y-1 transition-all"
+                >
+                  Finish Session & Return Home
+                </button>
+              </div>
+            </div>
+          ) : selectedQuestion ? (
+            /* Question Workspace */
+            <div className="max-w-4xl w-full mx-auto flex flex-col h-full">
               
-              {/* Question Area */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <span className="px-2 py-1 rounded bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider">
-                    Question {session.questions.indexOf(selectedQuestion) + 1}
-                  </span>
-                  <span className="text-muted text-xs font-medium">
-                    {MODE_LABEL[selectedQuestion.type] || selectedQuestion.type}
-                  </span>
+              {/* Top Navigation Strip */}
+              <div className="mb-10 space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <span className="text-xs font-black text-primary uppercase tracking-tighter bg-primary/10 px-3 py-1 rounded-full">
+                      Question {currentIndex + 1} of {allQuestions.length}
+                    </span>
+                    <span className="text-[10px] font-bold text-muted uppercase tracking-widest">
+                      {MODE_LABEL[selectedQuestion.type]} Question
+                    </span>
+                  </div>
+                  <div className="flex gap-1.5">
+                    {allQuestions.map((q, i) => {
+                      const isCurrent = q.id === selectedId;
+                      const resp = responses[q.id];
+                      const isAnswered = resp?.draft?.trim() || resp?.result;
+                      const isSkipped = skippedIds.has(q.id);
+                      
+                      return (
+                        <button
+                          key={q.id}
+                          onClick={() => setSelectedId(q.id)}
+                          className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
+                            isCurrent ? 'ring-4 ring-primary/20 bg-primary scale-125' :
+                            isAnswered ? 'bg-green-500' :
+                            isSkipped ? 'ring-1 ring-amber-500 ring-offset-2 ring-offset-surface-1 bg-amber-500/20' :
+                            'bg-border'
+                          }`}
+                          title={`Question ${i + 1}`}
+                        />
+                      );
+                    })}
+                  </div>
                 </div>
-                <h1 className="text-2xl font-semibold leading-tight text-primary">
+
+                <h1 className="text-2xl font-bold leading-tight text-primary">
                   {selectedQuestion.question}
                 </h1>
               </div>
 
-              {/* Toggle Switch */}
-              <div className="flex items-center justify-between border-b border-border pb-4">
-                <div className="flex bg-surface-2 p-1 rounded-lg border border-border shadow-inner">
+              {/* Workspace Content */}
+              <div className="flex-1 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                {/* Toggle Switch */}
+                <div className="flex items-center justify-between border-b border-border pb-4">
+                  <div className="flex bg-surface-2 p-1 rounded-lg border border-border shadow-inner">
+                    <button 
+                      className={`px-4 py-1.5 text-[10px] font-black rounded-md transition-all ${answerMode === 'text' ? 'bg-primary text-white shadow-sm' : 'text-muted hover:text-primary'}`}
+                      onClick={() => setAnswerMode('text')}
+                    >
+                      TEXT MODE
+                    </button>
+                    <button 
+                      className={`px-4 py-1.5 text-[10px] font-black rounded-md transition-all ${answerMode === 'code' ? 'bg-primary text-white shadow-sm' : 'text-muted hover:text-primary'}`}
+                      onClick={() => setAnswerMode('code')}
+                    >
+                      CODE MODE
+                    </button>
+                  </div>
                   <button 
-                    className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${answerMode === 'text' ? 'bg-primary text-white shadow-sm' : 'text-muted hover:text-primary'}`}
-                    onClick={() => setAnswerMode('text')}
+                    onClick={handleSubmit}
+                    disabled={responses[selectedId]?.grading || !responses[selectedId]?.draft?.trim()}
+                    className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                      responses[selectedId]?.grading || !responses[selectedId]?.draft?.trim()
+                        ? 'bg-muted/30 text-muted cursor-not-allowed'
+                        : 'bg-primary/10 text-primary hover:bg-primary hover:text-white'
+                    }`}
                   >
-                    TEXT MODE
-                  </button>
-                  <button 
-                    className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${answerMode === 'code' ? 'bg-primary text-white shadow-sm' : 'text-muted hover:text-primary'}`}
-                    onClick={() => setAnswerMode('code')}
-                  >
-                    CODE MODE
+                    {responses[selectedId]?.grading ? 'Grading...' : 'Grade Answer'}
                   </button>
                 </div>
-                <div className="text-xs text-muted font-medium">
-                  Saving automatically...
+
+                {/* Editor Area */}
+                <div className="min-h-[350px]">
+                  {answerMode === 'text' ? (
+                    <textarea
+                      className="w-full h-96 p-8 bg-surface-2 border border-border rounded-2xl focus:ring-4 focus:ring-primary/5 focus:border-primary/30 outline-none resize-none text-primary font-medium leading-relaxed transition-all placeholder:text-muted/40"
+                      placeholder="Your analytical response..."
+                      value={responses[selectedId]?.draft || ''}
+                      onChange={(e) => handleUpdateDraft(e.target.value)}
+                      disabled={responses[selectedId]?.grading}
+                    />
+                  ) : (
+                    <CodeLab 
+                      value={responses[selectedId]?.draft || ''}
+                      onChange={handleUpdateDraft}
+                      disabled={responses[selectedId]?.grading}
+                    />
+                  )}
                 </div>
-              </div>
 
-              {/* Input Area */}
-              <div className="min-h-[300px]">
-                {answerMode === 'text' ? (
-                  <textarea
-                    className="w-full h-80 p-6 bg-surface-2 border border-border rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent outline-none resize-none text-primary font-medium leading-relaxed transition-all placeholder:text-muted/50"
-                    placeholder="Type your structured answer here..."
-                    value={responses[selectedId]?.draft || ''}
-                    onChange={(e) => handleUpdateDraft(e.target.value)}
-                    disabled={responses[selectedId]?.grading}
-                  />
-                ) : (
-                  <CodeLab 
-                    value={responses[selectedId]?.draft || ''}
-                    onChange={handleUpdateDraft}
-                    disabled={responses[selectedId]?.grading}
-                  />
-                )}
-              </div>
-
-              {/* Submit Button */}
-              <div className="flex flex-col items-center gap-4">
-                <button
-                  className={`w-full py-4 rounded-xl font-bold text-sm tracking-wide transition-all shadow-lg ${
-                    responses[selectedId]?.grading || !responses[selectedId]?.draft?.trim()
-                      ? 'bg-muted cursor-not-allowed opacity-50'
-                      : 'bg-primary text-white hover:bg-primary-dark hover:-translate-y-0.5 active:translate-y-0'
-                  }`}
-                  onClick={handleSubmit}
-                  disabled={responses[selectedId]?.grading || !responses[selectedId]?.draft?.trim()}
-                >
-                  {responses[selectedId]?.grading ? 'AI IS EVALUATING...' : 'SUBMIT FOR AI FEEDBACK'}
-                </button>
-
-                {/* Feedback Result */}
+                {/* Result Display */}
                 {responses[selectedId]?.result && (
-                  <div className={`w-full p-6 rounded-xl border-l-4 shadow-sm animate-in zoom-in-95 duration-300 ${
-                    responses[selectedId].result.score >= 70 ? 'bg-green-50/50 border-green-500' :
-                    responses[selectedId].result.score >= 30 ? 'bg-amber-50/50 border-amber-500' : 'bg-red-50/50 border-red-500'
+                  <div className={`p-6 rounded-2xl border-l-4 shadow-sm animate-in zoom-in-95 duration-300 ${
+                    responses[selectedId].result.score >= 70 ? 'bg-green-50/30 border-green-500' :
+                    responses[selectedId].result.score >= 30 ? 'bg-amber-50/30 border-amber-500' : 'bg-red-50/30 border-red-500'
                   }`}>
                     <div className="flex justify-between items-start mb-4">
-                      <h3 className="font-bold text-sm uppercase tracking-tight text-primary">AI Feedback</h3>
-                      <span className={`px-2 py-1 rounded text-xs font-black ${
-                        responses[selectedId].result.score >= 70 ? 'bg-green-100 text-green-700' :
-                        responses[selectedId].result.score >= 30 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
-                      }`}>
-                        {responses[selectedId].result.score}% MATCH
-                      </span>
+                      <h3 className="font-black text-[10px] uppercase tracking-widest text-primary">AI Feedback</h3>
+                      <span className="text-xs font-black">{responses[selectedId].result.score}% Match</span>
                     </div>
                     <p className="text-sm leading-relaxed text-secondary mb-4">{responses[selectedId].result.feedback}</p>
-                    <div className="p-4 bg-surface-1/50 rounded-lg border border-border/50">
-                      <span className="text-[10px] font-bold text-muted uppercase block mb-1">Model Answer</span>
-                      <p className="text-xs text-muted leading-normal italic">{selectedQuestion.answer}</p>
+                    <div className="p-4 bg-surface-1/50 rounded-xl border border-border/50">
+                      <span className="text-[9px] font-black text-muted uppercase block mb-1">Model Answer Reference</span>
+                      <p className="text-[11px] text-muted leading-relaxed italic">{selectedQuestion.answer}</p>
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Bottom Controls */}
+              <div className="mt-auto pt-10 border-t border-border flex items-center justify-between gap-4">
+                <div className="flex gap-3">
+                  <button 
+                    onClick={handlePrev}
+                    disabled={currentIndex === 0}
+                    className="p-4 bg-surface-2 border border-border rounded-xl hover:bg-surface-1 disabled:opacity-30 disabled:hover:bg-surface-2 transition-all"
+                    title="Previous"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                  </button>
+                  <button 
+                    onClick={handleNext}
+                    className="flex items-center gap-2 px-8 py-4 bg-primary text-white rounded-xl font-bold text-sm shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all"
+                  >
+                    {currentIndex === allQuestions.length - 1 ? 'View Summary' : 'Next Question'}
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                  </button>
+                </div>
+
+                <div className="flex gap-3">
+                  <button 
+                    onClick={handleSkip}
+                    disabled={currentIndex === allQuestions.length - 1 && showSummary}
+                    className="px-6 py-4 bg-surface-2 border border-amber-200 text-amber-700 rounded-xl font-bold text-sm hover:bg-amber-50 transition-all"
+                  >
+                    Skip
+                  </button>
+                  <button 
+                    onClick={() => setShowSummary(true)}
+                    className="px-6 py-4 bg-surface-2 border border-border text-muted rounded-xl font-bold text-sm hover:text-primary hover:border-primary transition-all"
+                  >
+                    Finish
+                  </button>
+                </div>
               </div>
 
             </div>
@@ -251,41 +436,71 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
           )}
         </section>
 
-        {/* ── RIGHT PANEL: Navigation & Stats ── */}
+        {/* ── RIGHT PANEL: Batched List & Stats ── */}
         <section className="w-80 flex flex-col bg-surface-2 border-l border-border relative">
           
-          {/* Question List */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-2">
-            <h3 className="text-[10px] font-black text-muted uppercase tracking-widest mb-4 px-2">Questions</h3>
-            {session.questions.map((q, idx) => (
-              <button
-                key={q.id}
-                onClick={() => setSelectedId(q.id)}
-                className={`w-full text-left p-4 rounded-xl border transition-all duration-200 group ${
-                  selectedId === q.id 
-                    ? 'bg-primary border-primary text-white shadow-md' 
-                    : 'bg-surface-1 border-border text-primary hover:border-primary/50'
-                }`}
-              >
-                <div className="flex items-center gap-3 mb-1">
-                  <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${
-                    selectedId === q.id ? 'bg-white/20' : 'bg-muted/10'
-                  }`}>
-                    {idx + 1}
-                  </span>
-                  <span className={`text-[10px] font-bold uppercase tracking-widest opacity-60`}>
-                    {q.type}
-                  </span>
-                  {responses[q.id]?.result && (
-                    <span className="ml-auto text-[10px]">✓</span>
-                  )}
-                </div>
-                <p className={`text-xs line-clamp-2 leading-relaxed font-medium ${
-                  selectedId === q.id ? 'text-white/90' : 'text-secondary'
-                }`}>
-                  {q.question}
-                </p>
-              </button>
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4">
+            <h3 className="text-[10px] font-black text-muted uppercase tracking-widest px-2">Study Sets</h3>
+            
+            {batches.map((batch, bIdx) => (
+              <div key={batch.id} className="space-y-2">
+                <button 
+                  onClick={() => toggleBatch(batch.id)}
+                  className="w-full flex items-center justify-between px-3 py-2 bg-surface-1 border border-border rounded-lg group"
+                >
+                  <div className="flex flex-col items-start">
+                    <span className="text-[11px] font-black text-primary uppercase leading-tight">{batch.name}</span>
+                    <span className="text-[9px] text-muted font-bold uppercase tracking-tighter">
+                      {batch.questions.length} Questions • {new Date(batch.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <svg 
+                    className={`w-4 h-4 text-muted transition-transform ${expandedBatches.has(batch.id) ? 'rotate-180' : ''}`}
+                    viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                  ><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+
+                {expandedBatches.has(batch.id) && (
+                  <div className="space-y-1.5 pl-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                    {batch.questions.map((q) => {
+                      const qIdx = allQuestions.findIndex(aq => aq.id === q.id);
+                      const isCurrent = q.id === selectedId;
+                      const isAnswered = responses[q.id]?.draft?.trim() || responses[q.id]?.result;
+                      const isSkipped = skippedIds.has(q.id);
+
+                      return (
+                        <button
+                          key={q.id}
+                          onClick={() => { setSelectedId(q.id); setShowSummary(false); }}
+                          className={`w-full text-left p-3 rounded-xl border transition-all duration-200 ${
+                            isCurrent 
+                              ? 'bg-primary border-primary text-white shadow-md' 
+                              : 'bg-surface-1 border-border text-primary hover:border-primary/50'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${
+                              isCurrent ? 'bg-white/20' : 'bg-muted/10'
+                            }`}>
+                              {qIdx + 1}
+                            </span>
+                            <span className="text-[9px] font-bold uppercase tracking-widest opacity-60">
+                              {q.type}
+                            </span>
+                            {isAnswered && <span className="ml-auto text-[9px]">✓</span>}
+                            {isSkipped && <span className="ml-auto text-[9px] text-amber-500">!</span>}
+                          </div>
+                          <p className={`text-[11px] line-clamp-1 font-medium ${
+                            isCurrent ? 'text-white/90' : 'text-secondary'
+                          }`}>
+                            {q.question}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             ))}
           </div>
 
@@ -297,20 +512,7 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
                   {MODE_LABEL[session.mode]}
                 </span>
                 <h4 className="text-sm font-bold text-primary truncate leading-none mb-1">{session.course_name}</h4>
-                <p className="text-[10px] text-muted font-medium">Created on {new Date(session.created_at).toLocaleDateString()}</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <div className="bg-surface-1 p-3 rounded-xl border border-border/50">
-                  <span className="block text-[10px] font-bold text-muted uppercase mb-1">Total</span>
-                  <span className="text-xl font-black text-primary leading-none">{session.questions.length}</span>
-                </div>
-                <div className="bg-surface-1 p-3 rounded-xl border border-border/50">
-                  <span className="block text-[10px] font-bold text-muted uppercase mb-1">Open</span>
-                  <span className="text-xl font-black text-primary leading-none">
-                    {session.questions.filter(q => q.type !== 'mcq').length}
-                  </span>
-                </div>
+                <p className="text-[10px] text-muted font-medium">Progress: {Object.values(responses).filter(r => r.draft?.trim()).length}/{allQuestions.length}</p>
               </div>
 
               <div className="flex gap-2">
@@ -334,12 +536,12 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
         </section>
       </main>
 
-      {/* Generate More Modal (Reused) */}
+      {/* Generate More Modal */}
       {showMoreModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-surface-1 w-full max-w-md rounded-2xl shadow-2xl border border-border overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-border flex justify-between items-center">
-              <h3 className="font-bold text-primary">Generate More</h3>
+              <h3 className="font-bold text-primary text-sm uppercase tracking-widest">Generate More</h3>
               <button className="text-muted hover:text-primary text-xl" onClick={() => setShowMoreModal(false)}>&times;</button>
             </div>
             <div className="p-6 space-y-6">
@@ -373,9 +575,9 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
               </div>
             </div>
             <div className="p-6 bg-surface-2/50 flex gap-3">
-              <button className="flex-1 py-3 text-xs font-bold text-muted" onClick={() => setShowMoreModal(false)}>Cancel</button>
+              <button className="flex-1 py-3 text-xs font-bold text-muted uppercase tracking-widest" onClick={() => setShowMoreModal(false)}>Cancel</button>
               <button 
-                className="flex-[2] py-3 bg-primary text-white rounded-xl text-xs font-bold shadow-lg shadow-primary/20"
+                className="flex-[2] py-3 bg-primary text-white rounded-xl text-xs font-bold shadow-lg shadow-primary/20 uppercase tracking-widest"
                 onClick={handleGenerateMore}
                 disabled={generatingMore}
               >
