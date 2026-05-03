@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import uploadRouter from './routes/upload.js';
 import generateRouter from './routes/generate.js';
 import sessionsRouter from './routes/sessions.js';
+import gradeRouter from './routes/grade.js';
 
 dotenv.config();
 
@@ -18,6 +19,7 @@ app.get('/health', (_, res) => res.json({ status: 'ok' }));
 app.use('/api/upload', uploadRouter);
 app.use('/api/generate', generateRouter);
 app.use('/api/sessions', sessionsRouter);
+app.use('/api/grade', gradeRouter);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
