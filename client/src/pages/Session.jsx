@@ -218,6 +218,12 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [showMoreModal, setShowMoreModal] = useState(false);
+  const [generatingMore, setGeneratingMore] = useState(false);
+
+  // For the 'Generate More' form
+  const [moreMode, setMoreMode]   = useState('mcq');
+  const [moreCount, setMoreCount] = useState(5);
 
   useEffect(() => {
     Promise.all([
@@ -236,6 +242,29 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
     setDeleting(true);
     await api.delete(`/sessions/${id}`);
     navigate('/');
+  };
+
+  const handleGenerateMore = async () => {
+    setGeneratingMore(true);
+    try {
+      const res = await api.post('/generate', {
+        text: session.course_name, // Backend uses courseName as context if text is missing
+        courseName: session.course_name,
+        mode: moreMode,
+        count: moreCount,
+        sessionId: session.id
+      });
+      
+      setSession(prev => ({
+        ...prev,
+        questions: [...prev.questions, ...res.data.questions]
+      }));
+      setShowMoreModal(false);
+    } catch (err) {
+      alert('Failed to generate more questions. Please try again.');
+    } finally {
+      setGeneratingMore(false);
+    }
   };
 
   const fmtDate = (d) =>
@@ -413,11 +442,76 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
                 </>
               )}
 
+              <div className="session-divider" />
+              <button 
+                className="session-sidebar-btn" 
+                onClick={() => setShowMoreModal(true)}
+              >
+                <span className="sidebar-btn-icon">＋</span>
+                Generate More
+              </button>
+
             </div>
           </aside>
 
         </div>
       </main>
+
+      {/* Generate More Modal */}
+      {showMoreModal && (
+        <div className="modal-overlay" onClick={() => !generatingMore && setShowMoreModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Generate More Questions</h3>
+              <button className="modal-close" onClick={() => setShowMoreModal(false)} disabled={generatingMore}>&times;</button>
+            </div>
+            <div className="modal-body">
+              <p className="modal-sub">Add more questions to this session for <strong>{session.course_name}</strong>.</p>
+              
+              <div className="form-group">
+                <label>Question Type</label>
+                <div className="mode-chips">
+                  {['mcq', 'short_answer', 'essay', 'code', 'mixed'].map(m => (
+                    <button
+                      key={m}
+                      className={`mode-chip ${moreMode === m ? 'active' : ''}`}
+                      onClick={() => setMoreMode(m)}
+                    >
+                      {m.replace('_', ' ').toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Count: {moreCount}</label>
+                <input 
+                  type="range" min="1" max="20" 
+                  value={moreCount} 
+                  onChange={e => setMoreCount(parseInt(e.target.value))}
+                  className="range-input"
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button 
+                className="lp-btn-light" 
+                onClick={() => setShowMoreModal(false)}
+                disabled={generatingMore}
+              >
+                Cancel
+              </button>
+              <button 
+                className="lp-btn-dark" 
+                onClick={handleGenerateMore}
+                disabled={generatingMore}
+              >
+                {generatingMore ? 'Generating...' : '✦ Generate'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

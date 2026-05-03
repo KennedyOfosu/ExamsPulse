@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import api from '../lib/api.js';
+import CodeEditor from './CodeEditor.jsx';
 
-const TYPE_LABEL = { mcq: 'MCQ', essay: 'Essay', short_answer: 'Short Answer' };
+const TYPE_LABEL = { mcq: 'MCQ', essay: 'Essay', short_answer: 'Short Answer', code: 'Programming' };
 
 /* ─────────────────────────────────────────────────────
    MCQCard — used inside the full MCQ quiz view.
@@ -132,16 +133,25 @@ export function OpenCard({ question: q, index, total, onNext }) {
         {/* Input area (only if not yet graded) */}
         {!result && (
           <>
-            <textarea
-              className="qc-textarea"
-              placeholder={q.type === 'essay'
-                ? 'Write your essay answer here…'
-                : 'Type your answer here…'}
-              value={draft}
-              onChange={e => setDraft(e.target.value)}
-              rows={q.type === 'essay' ? 6 : 3}
-              disabled={grading}
-            />
+            {q.type === 'code' ? (
+              <CodeEditor
+                value={draft}
+                onChange={setDraft}
+                disabled={grading}
+                placeholder="// Write your solution here..."
+              />
+            ) : (
+              <textarea
+                className="qc-textarea"
+                placeholder={q.type === 'essay'
+                  ? 'Write your essay answer here…'
+                  : 'Type your answer here…'}
+                value={draft}
+                onChange={e => setDraft(e.target.value)}
+                rows={q.type === 'essay' ? 6 : 3}
+                disabled={grading}
+              />
+            )}
             {error && <p className="qc-grade-error">{error}</p>}
             <button
               className="qc-check-btn"
@@ -166,7 +176,11 @@ export function OpenCard({ question: q, index, total, onNext }) {
             {/* Student's answer */}
             <div className="qc-your-answer">
               <div className="qc-answer-label">Your answer</div>
-              <p className="qc-answer-text">{draft}</p>
+              {q.type === 'code' ? (
+                <pre className="qc-code-result"><code>{draft}</code></pre>
+              ) : (
+                <p className="qc-answer-text">{draft}</p>
+              )}
             </div>
 
             {/* AI feedback */}
@@ -178,7 +192,11 @@ export function OpenCard({ question: q, index, total, onNext }) {
             {/* Model answer */}
             <div className="qc-answer-box">
               <div className="qc-answer-label">Model Answer</div>
-              <p className="qc-answer-text">{q.answer}</p>
+              {q.type === 'code' ? (
+                <pre className="qc-code-result qc-code-result--model"><code>{q.answer}</code></pre>
+              ) : (
+                <p className="qc-answer-text">{q.answer}</p>
+              )}
               {q.explanation && (
                 <div className="qc-explanation" style={{ marginTop: 10 }}>
                   <span className="qc-explanation-icon">📖</span>

@@ -21,7 +21,7 @@ router.post('/', requireAuth, async (req, res) => {
     }
 
     const prompt = `You are an academic grading assistant. Evaluate the student's answer against the model answer.
-Be generous and lenient — students often express correct ideas in different words.
+Be generous and lenient — students often express correct ideas in different words or alternative coding styles.
 
 Question: ${question}
 
@@ -36,10 +36,15 @@ Grade the student's answer and respond with ONLY a valid JSON object (no markdow
   "similarity": 0-100
 }
 
-Scoring guide:
-- "correct": The student's answer captures the main idea(s) correctly, even if phrased differently. Similarity 70-100.
+Scoring guide for written/essay:
+- "correct": The student's answer captures the main idea(s) correctly. Similarity 70-100.
 - "partial": The student got part of it right but missed key points. Similarity 30-69.
-- "incorrect": The student's answer is off-topic or fundamentally wrong. Similarity 0-29.`;
+- "incorrect": The student's answer is off-topic or wrong. Similarity 0-29.
+
+Scoring guide for CODE:
+- "correct": The code logic is sound and solves the problem, even if it has minor syntax typos or different formatting. Similarity 80-100.
+- "partial": The approach is correct but has logic errors or is incomplete. Similarity 40-79.
+- "incorrect": The code is irrelevant or completely non-functional for the problem. Similarity 0-39.`;
 
     const response = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
