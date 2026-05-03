@@ -9,4 +9,16 @@ export default defineConfig({
       '/api': { target: 'http://localhost:4000', changeOrigin: true },
     },
   },
+  optimizeDeps: {
+    include: ['@monaco-editor/react'],
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'monaco-editor': ['@monaco-editor/react'],
+        },
+      },
+    },
+  },
 });
