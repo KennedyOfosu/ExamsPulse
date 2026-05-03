@@ -6,7 +6,7 @@ import api from '../lib/api.js';
 
 const MODE_LABEL = { mcq: 'MCQ', essay: 'Essay', short_answer: 'Short Answer', mixed: 'Mixed', code: 'Code' };
 
-/* Group questions by timestamp proximity (5-second window = same batch) */
+/* Group questions by timestamp proximity (5s window = same batch) */
 function groupIntoBatches(questions) {
   if (!questions?.length) return [];
   const sorted = [...questions].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
@@ -30,17 +30,13 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Navigation
   const [selectedId, setSelectedId] = useState(null);
   const [answerMode, setAnswerMode] = useState('text');
   const [responses, setResponses] = useState({});
   const [skipped, setSkipped] = useState(new Set());
   const [showSummary, setShowSummary] = useState(false);
-
-  // Sidebar batch accordion
   const [expandedBatches, setExpandedBatches] = useState(new Set());
 
-  // Generate More modal
   const [showMoreModal, setShowMoreModal] = useState(false);
   const [generatingMore, setGeneratingMore] = useState(false);
   const [moreMode, setMoreMode] = useState('mcq');
@@ -75,7 +71,6 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
     }));
   }, [session]);
 
-  // Auto-expand latest batch
   useEffect(() => {
     if (batches.length) setExpandedBatches(new Set([batches[batches.length - 1].batchId]));
   }, [batches.length]);
@@ -86,18 +81,19 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
 
   const currentIdx = allQuestions.findIndex(q => q.id === selectedId);
   const selectedQ = allQuestions[currentIdx];
+  const resp = responses[selectedId] || {};
+  const answeredCount = Object.values(responses).filter(r => r.draft?.trim()).length;
 
   const updateDraft = val => setResponses(p => ({ ...p, [selectedId]: { ...p[selectedId], draft: val } }));
 
   const handleSubmit = async () => {
-    const cur = responses[selectedId];
-    if (!cur?.draft?.trim()) return;
+    if (!resp.draft?.trim()) return;
     setResponses(p => ({ ...p, [selectedId]: { ...p[selectedId], grading: true } }));
     try {
-      const res = await api.post('/grade', { questionId: selectedId, studentAnswer: cur.draft });
+      const res = await api.post('/grade', { questionId: selectedId, studentAnswer: resp.draft });
       setResponses(p => ({ ...p, [selectedId]: { ...p[selectedId], grading: false, result: res.data } }));
     } catch {
-      alert('Grading failed.');
+      alert('Grading failed. Please try again.');
       setResponses(p => ({ ...p, [selectedId]: { ...p[selectedId], grading: false } }));
     }
   };
@@ -108,9 +104,14 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
     if (currentIdx < allQuestions.length - 1) goTo(allQuestions[currentIdx + 1].id);
     else setShowSummary(true);
   };
-  const doSkip = () => {
-    setSkipped(p => new Set(p).add(selectedId));
-    goNext();
+  const doSkip = () => { setSkipped(p => new Set(p).add(selectedId)); goNext(); };
+
+  const toggleBatch = (batchId) => {
+    setExpandedBatches(p => {
+      const n = new Set(p);
+      n.has(batchId) ? n.delete(batchId) : n.add(batchId);
+      return n;
+    });
   };
 
   const handleGenerateMore = async () => {
@@ -136,123 +137,128 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
   };
 
   if (loading) return (
-    <div className="flex h-screen bg-background">
+    <div className="sess-shell">
       <Sidebar user={user} sessions={[]} collapsed={collapsed} onCollapse={onCollapse} />
-      <div className="flex-1 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-primary" />
-      </div>
-    </div>
-  );
-  if (error) return (
-    <div className="flex h-screen bg-background">
-      <Sidebar user={user} sessions={[]} collapsed={collapsed} onCollapse={onCollapse} />
-      <div className="flex-1 flex items-center justify-center text-red-500">{error}</div>
+      <div className="sess-loading"><span className="spinner" /></div>
     </div>
   );
 
-  const resp = responses[selectedId] || {};
-  const answeredCount = Object.values(responses).filter(r => r.draft?.trim()).length;
+  if (error) return (
+    <div className="sess-shell">
+      <Sidebar user={user} sessions={[]} collapsed={collapsed} onCollapse={onCollapse} />
+      <div className="sess-loading" style={{ color: 'var(--danger)' }}>{error}</div>
+    </div>
+  );
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="sess-shell">
       <Sidebar user={user} sessions={sessions} theme={theme} onThemeToggle={onThemeToggle} collapsed={collapsed} onCollapse={onCollapse} />
 
-      <main className="flex-1 flex overflow-hidden">
+      <div className="sess-body">
 
         {/* ── LEFT: Workspace ── */}
-        <section className="flex-1 flex flex-col overflow-y-auto border-r border-border bg-surface-1">
+        <div className="sess-left">
           {showSummary ? (
-            /* Summary Screen */
-            <div className="max-w-3xl w-full mx-auto p-10 space-y-8">
-              <div className="text-center">
-                <h1 className="text-3xl font-black text-primary">Session Summary</h1>
-                <p className="text-secondary mt-1">Review your progress before finishing.</p>
+            <div className="sess-summary">
+              <div style={{ textAlign: 'center', marginBottom: 32 }}>
+                <h1 style={{ fontSize: 28, fontWeight: 900, color: 'var(--text-primary)' }}>Session Summary</h1>
+                <p style={{ color: 'var(--text-secondary)', marginTop: 6 }}>Review your progress before finishing.</p>
               </div>
-              <div className="grid grid-cols-3 gap-4 text-center">
+
+              <div className="sess-summary-stats">
                 {[
-                  { label: 'Answered', val: answeredCount, color: 'text-green-500' },
-                  { label: 'Skipped', val: skipped.size, color: 'text-amber-500' },
-                  { label: 'Unanswered', val: allQuestions.length - answeredCount - skipped.size, color: 'text-muted' },
+                  { label: 'Answered', val: answeredCount, color: 'var(--success)' },
+                  { label: 'Skipped', val: skipped.size, color: 'var(--accent)' },
+                  { label: 'Unanswered', val: allQuestions.length - answeredCount - skipped.size, color: 'var(--text-muted)' },
                 ].map(s => (
-                  <div key={s.label} className="bg-surface-2 rounded-2xl p-5 border border-border">
-                    <div className={`text-3xl font-black ${s.color}`}>{s.val}</div>
-                    <div className="text-[10px] font-bold text-muted uppercase mt-1">{s.label}</div>
+                  <div key={s.label} className="sess-summary-stat">
+                    <span style={{ fontSize: 32, fontWeight: 900, color: s.color }}>{s.val}</span>
+                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em', marginTop: 4 }}>{s.label}</span>
                   </div>
                 ))}
               </div>
-              <div className="space-y-3">
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {allQuestions.map((q, i) => {
                   const r = responses[q.id];
                   const isAns = r?.draft?.trim() || r?.result;
                   const isSk = skipped.has(q.id);
                   return (
-                    <div key={q.id} className="flex items-center gap-4 bg-surface-2 p-4 rounded-xl border border-border">
-                      <span className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black border ${isAns ? 'bg-green-500/10 border-green-500/30 text-green-600' : isSk ? 'bg-amber-500/10 border-amber-500/30 text-amber-600' : 'bg-surface-1 border-border text-muted'}`}>{i + 1}</span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-bold text-primary truncate">{q.question}</p>
-                        <span className="text-[10px] font-bold text-muted uppercase">{isAns ? 'Answered' : isSk ? 'Skipped' : 'Unanswered'}</span>
+                    <div key={q.id} className="sess-summary-row">
+                      <span className={`sess-summary-badge ${isAns ? 'badge-answered' : isSk ? 'badge-skipped' : 'badge-unanswered'}`}>{i + 1}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.question}</p>
+                        <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: isAns ? 'var(--success)' : isSk ? 'var(--accent)' : 'var(--text-muted)' }}>
+                          {isAns ? 'Answered' : isSk ? 'Skipped' : 'Unanswered'}
+                        </span>
                       </div>
-                      <button onClick={() => goTo(q.id)} className="px-3 py-1.5 bg-surface-1 hover:bg-primary hover:text-white border border-border rounded-lg text-xs font-bold transition-all">Review</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => goTo(q.id)}>Review</button>
                     </div>
                   );
                 })}
               </div>
-              <div className="text-center pt-4">
-                <button onClick={() => navigate('/')} className="px-10 py-4 bg-primary text-white rounded-2xl font-bold shadow-xl shadow-primary/20">Finish & Return Home</button>
+
+              <div style={{ textAlign: 'center', marginTop: 40 }}>
+                <button className="btn btn-primary" style={{ padding: '14px 40px', fontSize: 14 }} onClick={() => navigate('/')}>
+                  Finish &amp; Return Home
+                </button>
               </div>
             </div>
           ) : selectedQ ? (
-            <div className="max-w-4xl w-full mx-auto p-8 flex flex-col min-h-full">
+            <div className="sess-workspace">
 
               {/* Progress dots + counter */}
-              <div className="mb-8 space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-primary bg-primary/10 px-3 py-1 rounded-full">
-                    Question {currentIdx + 1} of {allQuestions.length}
-                  </span>
-                  <span className="text-[10px] text-muted font-bold uppercase">{answeredCount} answered · {skipped.size} skipped</span>
-                </div>
-                <div className="flex gap-1.5 flex-wrap">
-                  {allQuestions.map((q, i) => {
-                    const isCur = q.id === selectedId;
-                    const isAns = responses[q.id]?.draft?.trim() || responses[q.id]?.result;
-                    const isSk = skipped.has(q.id);
-                    return (
-                      <button key={q.id} onClick={() => goTo(q.id)} title={`Q${i + 1}`}
-                        className={`h-2.5 rounded-full transition-all duration-300 ${isCur ? 'w-6 bg-primary ring-4 ring-primary/20' : isAns ? 'w-2.5 bg-green-500' : isSk ? 'w-2.5 bg-amber-400' : 'w-2.5 bg-border hover:bg-muted'}`}
-                      />
-                    );
-                  })}
-                </div>
+              <div className="sess-progress-bar">
+                <span className="sess-progress-label">
+                  Question {currentIdx + 1} of {allQuestions.length}
+                </span>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>
+                  {answeredCount} answered · {skipped.size} skipped
+                </span>
+              </div>
+              <div className="sess-dot-row">
+                {allQuestions.map((q, i) => {
+                  const isCur = q.id === selectedId;
+                  const isAns = responses[q.id]?.draft?.trim() || responses[q.id]?.result;
+                  const isSk = skipped.has(q.id);
+                  return (
+                    <button
+                      key={q.id}
+                      onClick={() => goTo(q.id)}
+                      title={`Q${i + 1}`}
+                      className={`sess-dot ${isCur ? 'sess-dot--active' : isAns ? 'sess-dot--answered' : isSk ? 'sess-dot--skipped' : 'sess-dot--empty'}`}
+                    />
+                  );
+                })}
               </div>
 
-              {/* Question */}
-              <div className="mb-6 space-y-3">
-                <div className="flex gap-2">
-                  <span className="px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-black rounded uppercase">{MODE_LABEL[selectedQ.type] || selectedQ.type}</span>
-                  {skipped.has(selectedId) && <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-black rounded uppercase">Skipped</span>}
+              {/* Question text */}
+              <div className="sess-question-block">
+                <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center' }}>
+                  <span className="badge badge-mixed">{MODE_LABEL[selectedQ.type] || selectedQ.type}</span>
+                  {skipped.has(selectedId) && <span className="badge" style={{ background: 'rgba(245,158,11,.15)', color: 'var(--accent)' }}>Skipped</span>}
                 </div>
-                <h1 className="text-2xl font-semibold text-primary leading-tight">{selectedQ.question}</h1>
+                <h1 className="sess-question-text">{selectedQ.question}</h1>
               </div>
 
               {/* Mode toggle */}
-              <div className="flex items-center justify-between border-b border-border pb-4 mb-6">
-                <div className="flex bg-surface-2 p-1 rounded-lg border border-border">
+              <div className="sess-mode-toggle">
+                <div className="sess-mode-switch">
                   {['text', 'code'].map(m => (
                     <button key={m} onClick={() => setAnswerMode(m)}
-                      className={`px-4 py-1.5 text-[10px] font-black rounded-md transition-all uppercase ${answerMode === m ? 'bg-primary text-white shadow-sm' : 'text-muted hover:text-primary'}`}>
-                      {m} Mode
+                      className={`sess-mode-btn ${answerMode === m ? 'sess-mode-btn--active' : ''}`}>
+                      {m === 'text' ? 'Text Mode' : 'Code Mode'}
                     </button>
                   ))}
                 </div>
-                <span className="text-[10px] text-muted">Auto-saving draft</span>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Auto-saving draft</span>
               </div>
 
               {/* Editor */}
-              <div className="mb-6">
+              <div className="sess-editor-area">
                 {answerMode === 'text' ? (
                   <textarea
-                    className="w-full h-64 p-6 bg-surface-2 border border-border rounded-xl outline-none resize-none text-primary font-medium leading-relaxed focus:ring-2 focus:ring-primary/30 transition-all placeholder:text-muted/40"
+                    className="sess-textarea"
                     placeholder="Type your answer here..."
                     value={resp.draft || ''}
                     onChange={e => updateDraft(e.target.value)}
@@ -263,68 +269,72 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
                 )}
               </div>
 
-              {/* Submit + Result */}
-              <div className="mb-8 space-y-4">
-                <button onClick={handleSubmit}
-                  disabled={resp.grading || !resp.draft?.trim()}
-                  className={`w-full py-4 rounded-xl font-bold text-sm tracking-wide transition-all ${resp.grading || !resp.draft?.trim() ? 'bg-surface-2 text-muted cursor-not-allowed border border-border' : 'bg-primary text-white shadow-lg shadow-primary/20 hover:-translate-y-0.5'}`}>
-                  {resp.grading ? 'AI Evaluating…' : 'Submit for AI Feedback'}
-                </button>
-                {resp.result && (
-                  <div className={`p-6 rounded-xl border-l-4 ${resp.result.score >= 70 ? 'bg-green-50/30 border-green-500' : resp.result.score >= 30 ? 'bg-amber-50/30 border-amber-500' : 'bg-red-50/30 border-red-500'}`}>
-                    <div className="flex justify-between mb-3">
-                      <span className="text-xs font-black text-primary uppercase">AI Feedback</span>
-                      <span className={`text-xs font-black px-2 py-0.5 rounded ${resp.result.score >= 70 ? 'bg-green-100 text-green-700' : resp.result.score >= 30 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{resp.result.score}%</span>
-                    </div>
-                    <p className="text-sm text-secondary leading-relaxed mb-3">{resp.result.feedback}</p>
-                    <div className="p-3 bg-surface-1/50 rounded-lg border border-border/50">
-                      <span className="text-[9px] font-black text-muted uppercase block mb-1">Model Answer</span>
-                      <p className="text-xs text-muted italic">{selectedQ.answer}</p>
-                    </div>
+              {/* Submit */}
+              <button
+                className={`btn ${resp.draft?.trim() && !resp.grading ? 'btn-primary' : ''}`}
+                style={{ width: '100%', justifyContent: 'center', padding: '14px', fontSize: 13, fontWeight: 800, letterSpacing: '0.05em', ...((!resp.draft?.trim() || resp.grading) ? { background: 'var(--surface-2)', color: 'var(--text-muted)', border: '1px solid var(--border)', cursor: 'not-allowed' } : {}) }}
+                onClick={handleSubmit}
+                disabled={resp.grading || !resp.draft?.trim()}
+              >
+                {resp.grading ? 'AI Evaluating…' : 'Submit for AI Feedback'}
+              </button>
+
+              {/* Result */}
+              {resp.result && (
+                <div className={`sess-result ${resp.result.score >= 70 ? 'sess-result--correct' : resp.result.score >= 30 ? 'sess-result--partial' : 'sess-result--wrong'}`}>
+                  <div className="sess-result-header">
+                    <span style={{ fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-primary)' }}>AI Feedback</span>
+                    <span className={`badge ${resp.result.score >= 70 ? 'badge-answered-pill' : resp.result.score >= 30 ? 'badge-skipped-pill' : 'badge-wrong-pill'}`}>{resp.result.score}%</span>
                   </div>
-                )}
-              </div>
+                  <p style={{ fontSize: 14, lineHeight: 1.6, color: 'var(--text-secondary)', marginBottom: 12 }}>{resp.result.feedback}</p>
+                  <div className="sess-model-answer">
+                    <span style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Model Answer</span>
+                    <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5, fontStyle: 'italic' }}>{selectedQ.answer}</p>
+                  </div>
+                </div>
+              )}
 
               {/* Nav controls */}
-              <div className="mt-auto pt-6 border-t border-border flex items-center justify-between gap-3">
-                <button onClick={goPrev} disabled={currentIdx === 0}
-                  className="flex items-center gap-2 px-5 py-3 bg-surface-2 border border-border rounded-xl text-xs font-bold disabled:opacity-30 hover:border-primary/50 transition-all">
-                  ← Prev
-                </button>
-                <div className="flex gap-2">
-                  <button onClick={doSkip} className="px-5 py-3 border border-amber-300 text-amber-700 bg-amber-50/50 rounded-xl text-xs font-bold hover:bg-amber-100 transition-all">Skip</button>
-                  <button onClick={() => setShowSummary(true)} className="px-5 py-3 bg-surface-2 border border-border text-muted rounded-xl text-xs font-bold hover:text-primary transition-all">Summary</button>
-                  <button onClick={goNext} className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl text-xs font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all">
+              <div className="sess-nav-controls">
+                <button className="btn btn-ghost" onClick={goPrev} disabled={currentIdx === 0}>← Prev</button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn" style={{ border: '1px solid var(--accent)', color: 'var(--accent)', background: 'rgba(245,158,11,.08)' }} onClick={doSkip}>Skip</button>
+                  <button className="btn btn-ghost" onClick={() => setShowSummary(true)}>Summary</button>
+                  <button className="btn btn-primary" onClick={goNext}>
                     {currentIdx === allQuestions.length - 1 ? 'Finish' : 'Next →'}
                   </button>
                 </div>
               </div>
+
             </div>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center opacity-30">
-              <span className="text-5xl mb-3">🖱️</span>
-              <p className="text-sm font-bold uppercase tracking-widest">Select a question to begin</p>
+            <div className="sess-empty-state">
+              <span style={{ fontSize: 48, display: 'block', marginBottom: 12 }}>🖱️</span>
+              <p style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)' }}>Select a question to begin</p>
             </div>
           )}
-        </section>
+        </div>
 
         {/* ── RIGHT: Batch list + Stats ── */}
-        <section className="w-72 flex flex-col bg-surface-2 border-l border-border">
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
-            <h3 className="text-[10px] font-black text-muted uppercase tracking-widest px-1 mb-3">Study Sets</h3>
+        <div className="sess-right">
+
+          <div className="sess-right-list">
+            <div className="sess-right-heading">Study Sets</div>
+
             {batches.map(batch => (
-              <div key={batch.batchId}>
-                {/* Batch header */}
-                <button onClick={() => setExpandedBatches(p => { const n = new Set(p); n.has(batch.batchId) ? n.delete(batch.batchId) : n.add(batch.batchId); return n; })}
-                  className="w-full flex items-center justify-between px-3 py-2 bg-surface-1 border border-border rounded-lg mb-1 hover:border-primary/40 transition-all">
-                  <div className="text-left">
-                    <div className="text-[11px] font-black text-primary">{batch.label}</div>
-                    <div className="text-[9px] text-muted font-bold">{batch.questions.length} Qs · {batch.time} · {batch.typeLabel}</div>
+              <div key={batch.batchId} style={{ marginBottom: 8 }}>
+                <button className="sess-batch-header" onClick={() => toggleBatch(batch.batchId)}>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 900, color: 'var(--text-primary)' }}>{batch.label}</div>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                      {batch.questions.length} Qs · {batch.time} · {batch.typeLabel}
+                    </div>
                   </div>
-                  <svg className={`w-3.5 h-3.5 text-muted transition-transform ${expandedBatches.has(batch.batchId) ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 12 15 18 9" /></svg>
+                  <span style={{ fontSize: 10, color: 'var(--text-muted)', transition: 'transform 0.2s', display: 'inline-block', transform: expandedBatches.has(batch.batchId) ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
                 </button>
+
                 {expandedBatches.has(batch.batchId) && (
-                  <div className="space-y-1 pl-1">
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingLeft: 4, marginTop: 4 }}>
                     {batch.questions.map(q => {
                       const gIdx = allQuestions.findIndex(aq => aq.id === q.id);
                       const isCur = q.id === selectedId;
@@ -332,14 +342,16 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
                       const isSk = skipped.has(q.id);
                       return (
                         <button key={q.id} onClick={() => goTo(q.id)}
-                          className={`w-full text-left p-3 rounded-xl border transition-all ${isCur ? 'bg-primary border-primary text-white' : 'bg-surface-1 border-border hover:border-primary/40'}`}>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className={`text-[9px] font-black px-1.5 rounded ${isCur ? 'bg-white/20' : 'bg-muted/10'}`}>{gIdx + 1}</span>
-                            <span className="text-[9px] font-bold uppercase opacity-60">{q.type}</span>
-                            {isAns && <span className="ml-auto text-[9px] text-green-500">✓</span>}
-                            {isSk && !isAns && <span className="ml-auto text-[9px] text-amber-500">!</span>}
+                          className={`sess-q-item ${isCur ? 'sess-q-item--active' : ''}`}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                            <span className="sess-q-num">{gIdx + 1}</span>
+                            <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', opacity: 0.6 }}>{q.type}</span>
+                            {isAns && <span style={{ marginLeft: 'auto', fontSize: 9, color: 'var(--success)' }}>✓</span>}
+                            {isSk && !isAns && <span style={{ marginLeft: 'auto', fontSize: 9, color: 'var(--accent)' }}>!</span>}
                           </div>
-                          <p className={`text-[11px] font-medium line-clamp-1 ${isCur ? 'text-white/90' : 'text-secondary'}`}>{q.question}</p>
+                          <p style={{ fontSize: 11, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: isCur ? 'rgba(255,255,255,.9)' : 'var(--text-secondary)' }}>
+                            {q.question}
+                          </p>
                         </button>
                       );
                     })}
@@ -350,66 +362,57 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
           </div>
 
           {/* Pinned stats card */}
-          <div className="p-3 border-t border-border">
-            <div className="bg-surface-1 rounded-2xl p-4 border border-border space-y-3">
-              <div>
-                <span className="text-[10px] font-black text-primary bg-primary/10 px-2 py-0.5 rounded-full inline-block mb-1">{MODE_LABEL[session?.mode]}</span>
-                <h4 className="text-sm font-bold text-primary truncate">{session?.course_name}</h4>
-                <p className="text-[10px] text-muted">Progress: {answeredCount}/{allQuestions.length}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="bg-surface-2 p-2.5 rounded-xl border border-border/50">
-                  <div className="text-[9px] font-bold text-muted uppercase mb-0.5">Total</div>
-                  <div className="text-lg font-black text-primary">{allQuestions.length}</div>
+          <div className="sess-stats-card">
+            <span className="badge badge-mixed" style={{ marginBottom: 6 }}>{MODE_LABEL[session?.mode]}</span>
+            <h4 style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session?.course_name}</h4>
+            <p style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 14 }}>Progress: {answeredCount}/{allQuestions.length}</p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+              {[{ label: 'Total', val: allQuestions.length }, { label: 'Open', val: allQuestions.filter(q => q.type !== 'mcq').length }].map(s => (
+                <div key={s.label} style={{ background: 'var(--bg)', padding: '10px', borderRadius: 10, border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 2 }}>{s.label}</div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: 'var(--text-primary)' }}>{s.val}</div>
                 </div>
-                <div className="bg-surface-2 p-2.5 rounded-xl border border-border/50">
-                  <div className="text-[9px] font-bold text-muted uppercase mb-0.5">Open</div>
-                  <div className="text-lg font-black text-primary">{allQuestions.filter(q => q.type !== 'mcq').length}</div>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => setShowMoreModal(true)} className="flex-1 py-2 text-[10px] font-black text-muted hover:text-primary uppercase tracking-widest bg-surface-2 border border-border rounded-lg transition-all">+ More</button>
-                <button onClick={handleDelete} disabled={deleting} className="p-2 text-red-500 bg-red-50 hover:bg-red-100 border border-red-100 rounded-lg transition-all">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4h6v2" /></svg>
-                </button>
-              </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-ghost btn-sm" style={{ flex: 1, justifyContent: 'center', fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.05em' }} onClick={() => setShowMoreModal(true)}>+ More</button>
+              <button className="btn btn-danger btn-sm" style={{ padding: '6px 10px' }} onClick={handleDelete} disabled={deleting} title="Delete">🗑</button>
             </div>
           </div>
-        </section>
-      </main>
+        </div>
+      </div>
 
       {/* Generate More Modal */}
       {showMoreModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-surface-1 w-full max-w-md rounded-2xl shadow-2xl border border-border overflow-hidden">
-            <div className="p-5 border-b border-border flex justify-between items-center">
-              <h3 className="font-bold text-sm text-primary uppercase tracking-widest">Generate More</h3>
-              <button className="text-muted hover:text-primary text-xl" onClick={() => setShowMoreModal(false)}>&times;</button>
+        <div className="modal-overlay" onClick={() => !generatingMore && setShowMoreModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Generate More</h3>
+              <button className="modal-close" onClick={() => setShowMoreModal(false)} disabled={generatingMore}>&times;</button>
             </div>
-            <div className="p-5 space-y-5">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-muted uppercase tracking-widest">Question Type</label>
-                <div className="flex flex-wrap gap-2">
+            <div className="modal-body">
+              <p className="modal-sub">Add more questions to <strong>{session.course_name}</strong>.</p>
+              <div className="form-group">
+                <label>Question Type</label>
+                <div className="mode-chips">
                   {['mcq', 'short_answer', 'essay', 'code', 'mixed'].map(m => (
-                    <button key={m} onClick={() => setMoreMode(m)}
-                      className={`px-3 py-1.5 rounded-full text-[10px] font-bold border transition-all ${moreMode === m ? 'bg-primary border-primary text-white' : 'bg-surface-2 border-border text-muted hover:border-primary'}`}>
-                      {m.toUpperCase()}
+                    <button key={m} className={`mode-chip ${moreMode === m ? 'active' : ''}`} onClick={() => setMoreMode(m)}>
+                      {m.replace('_', ' ').toUpperCase()}
                     </button>
                   ))}
                 </div>
               </div>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <label className="text-[10px] font-black text-muted uppercase tracking-widest">Count</label>
-                  <span className="text-xs font-bold text-primary">{moreCount} questions</span>
-                </div>
-                <input type="range" min="1" max="20" value={moreCount} onChange={e => setMoreCount(+e.target.value)} className="w-full accent-primary" />
+              <div className="form-group">
+                <label>Count: {moreCount}</label>
+                <input type="range" min="1" max="20" value={moreCount} onChange={e => setMoreCount(+e.target.value)} className="range-input" />
               </div>
             </div>
-            <div className="p-5 bg-surface-2/50 flex gap-3">
-              <button className="flex-1 py-3 text-xs font-bold text-muted" onClick={() => setShowMoreModal(false)}>Cancel</button>
-              <button onClick={handleGenerateMore} disabled={generatingMore} className="flex-[2] py-3 bg-primary text-white rounded-xl text-xs font-bold shadow-lg">
-                {generatingMore ? 'Generating…' : 'Generate'}
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setShowMoreModal(false)} disabled={generatingMore}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleGenerateMore} disabled={generatingMore}>
+                {generatingMore ? 'Generating…' : '✦ Generate'}
               </button>
             </div>
           </div>
