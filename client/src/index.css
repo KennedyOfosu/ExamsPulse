@@ -3780,83 +3780,120 @@ body.sb-collapsed .main-content {
 }
 
 /* ══════════════════════════════════════════
-   CODE EDITOR STYLES
+   CODELAB PANEL STYLES
    ══════════════════════════════════════════ */
-.code-editor-container {
+.codelab-shell {
   border-radius: var(--radius-md);
   overflow: hidden;
   border: 1px solid var(--border);
   background: #1e1e1e;
-  margin-top: 12px;
-  box-shadow: var(--shadow-sm);
+  margin-top: 16px;
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
 }
 
-.code-editor-header {
+.codelab-toolbar {
   background: #252526;
-  padding: 8px 14px;
+  padding: 10px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid #333;
 }
 
-.editor-dots {
+.codelab-dots {
   display: flex;
-  gap: 6px;
+  gap: 8px;
 }
-.dot {
-  width: 10px;
-  height: 10px;
+.codelab-dot {
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
 }
-.dot-red { background: #ff5f56; }
-.dot-yellow { background: #ffbd2e; }
-.dot-green { background: #27c93f; }
+.codelab-dot--red { background: #ff5f56; }
+.codelab-dot--yel { background: #ffbd2e; }
+.codelab-dot--grn { background: #27c93f; }
 
-.editor-lang {
-  font-size: 10px;
-  font-weight: 700;
-  color: #888;
-  letter-spacing: 0.5px;
-}
-
-.code-editor-body {
+.codelab-controls {
   display: flex;
-  height: 240px;
-  position: relative;
+  align-items: center;
+  gap: 12px;
 }
 
-.line-numbers {
-  width: 40px;
-  background: #1e1e1e;
-  color: #858585;
-  text-align: right;
-  padding: 12px 10px 12px 0;
-  font-family: 'Fira Code', 'Courier New', monospace;
-  font-size: 13px;
-  line-height: 20px;
-  user-select: none;
-  border-right: 1px solid #333;
-  overflow: hidden;
-}
-
-.code-input {
-  flex: 1;
-  background: transparent;
-  border: none;
-  color: #d4d4d4;
-  font-family: 'Fira Code', 'Courier New', monospace;
-  font-size: 13px;
-  line-height: 20px;
-  padding: 12px 14px;
-  resize: none;
+.codelab-lang-select {
+  background: #3c3c3c;
+  color: #ccc;
+  border: 1px solid #555;
+  border-radius: 4px;
+  font-size: 11px;
+  padding: 4px 8px;
   outline: none;
-  overflow-y: auto;
-  white-space: pre;
+  cursor: pointer;
+  font-family: inherit;
 }
 
-.editor-disabled {
-  opacity: 0.8;
+.codelab-preview-toggle {
+  background: transparent;
+  border: 1px solid #555;
+  color: #aaa;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.codelab-preview-toggle.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.codelab-body {
+  display: flex;
+  flex-direction: column;
+  background: #1e1e1e;
+}
+
+.codelab-body--split {
+  flex-direction: row;
+}
+
+.codelab-editor-pane {
+  flex: 1;
+  min-height: 300px;
+}
+
+.codelab-preview-pane {
+  flex: 1;
+  background: #fff;
+  border-left: 1px solid #333;
+  display: flex;
+  flex-direction: column;
+  min-height: 300px;
+}
+
+.preview-label {
+  background: #f0f0f0;
+  color: #666;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 4px 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border-bottom: 1px solid #ddd;
+}
+
+.preview-iframe {
+  flex: 1;
+  border: none;
+  width: 100%;
+  height: 100%;
+}
+
+.codelab--disabled {
+  opacity: 0.85;
+  pointer-events: none;
 }
 
 .qc-code-result {
@@ -3864,7 +3901,7 @@ body.sb-collapsed .main-content {
   color: #d4d4d4;
   padding: 16px;
   border-radius: var(--radius-sm);
-  font-family: 'Fira Code', 'Courier New', monospace;
+  font-family: 'Fira Code', 'JetBrains Mono', monospace;
   font-size: 13px;
   line-height: 1.5;
   overflow-x: auto;

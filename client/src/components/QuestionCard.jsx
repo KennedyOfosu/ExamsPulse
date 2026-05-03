@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import api from '../lib/api.js';
-import CodeEditor from './CodeEditor.jsx';
+import CodeLab from './CodeLab.jsx';
 
-const TYPE_LABEL = { mcq: 'MCQ', essay: 'Essay', short_answer: 'Short Answer', code: 'Programming' };
+const TYPE_LABEL = { mcq: 'MCQ', essay: 'Essay', short_answer: 'Short Answer', code: 'CodeLab' };
 
 /* ─────────────────────────────────────────────────────
    MCQCard — used inside the full MCQ quiz view.
@@ -134,11 +134,10 @@ export function OpenCard({ question: q, index, total, onNext }) {
         {!result && (
           <>
             {q.type === 'code' ? (
-              <CodeEditor
+              <CodeLab
                 value={draft}
                 onChange={setDraft}
                 disabled={grading}
-                placeholder="// Write your solution here..."
               />
             ) : (
               <textarea

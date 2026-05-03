@@ -75,6 +75,8 @@ export default function Dashboard({ user, theme, onThemeToggle, collapsed, onCol
   const [error, setError]           = useState('');
   const [showCourseModal, setShowCourseModal] = useState(false);
   const [showTypeModal, setShowTypeModal]     = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successSessionId, setSuccessSessionId] = useState(null);
 
   useEffect(() => {
     api.get('/sessions').then(r => setSessions(r.data)).catch(() => {});
@@ -131,7 +133,11 @@ export default function Dashboard({ user, theme, onThemeToggle, collapsed, onCol
       await api.post('/generate', { sessionId: uploadData.sessionId, count });
       setProgress(100);
 
-      navigate(`/session/${uploadData.sessionId}`);
+      setSuccessSessionId(uploadData.sessionId);
+      setShowSuccessModal(true);
+      setLoading(false); setStage(''); setProgress(0);
+      // Update local sessions list
+      api.get('/sessions').then(r => setSessions(r.data)).catch(() => {});
     } catch (err) {
       setError(err.response?.data?.error || err.message || 'Something went wrong.');
       setLoading(false); setStage(''); setProgress(0);
@@ -326,6 +332,46 @@ export default function Dashboard({ user, theme, onThemeToggle, collapsed, onCol
           )}
         </div>
       </main>
+
+      {/* Generation Success Modal */}
+      {showSuccessModal && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: 400 }}>
+            <div className="modal-header">
+              <h3>Generation Complete!</h3>
+              <button className="modal-close" onClick={() => setShowSuccessModal(false)}>&times;</button>
+            </div>
+            <div className="modal-body">
+              <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                <span style={{ fontSize: 48 }}>🎉</span>
+                <p style={{ marginTop: 12, color: 'var(--text-secondary)' }}>
+                  Successfully generated questions for <strong>{courseName}</strong>.
+                </p>
+              </div>
+              <p className="modal-sub" style={{ fontSize: 13, textAlign: 'center' }}>
+                Would you like to start studying now, or add another set of questions to this session?
+              </p>
+            </div>
+            <div className="modal-footer" style={{ flexDirection: 'column', gap: 10 }}>
+              <button 
+                className="lp-btn-dark" style={{ width: '100%' }}
+                onClick={() => navigate(`/session/${successSessionId}`)}
+              >
+                🚀 Start Study Session
+              </button>
+              <button 
+                className="lp-btn-light" style={{ width: '100%', border: '1px solid var(--border)' }}
+                onClick={() => {
+                  setShowSuccessModal(false);
+                  setShowTypeModal(true); // Let them change types for the next set
+                }}
+              >
+                ➕ Generate Another Set
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

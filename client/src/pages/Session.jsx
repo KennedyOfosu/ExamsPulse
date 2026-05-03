@@ -1,228 +1,31 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar.jsx';
-import { MCQCard, OpenCard } from '../components/QuestionCard.jsx';
+import CodeLab from '../components/CodeLab.jsx';
 import api from '../lib/api.js';
 
 const MODE_LABEL = { mcq: 'MCQ', essay: 'Essay', short_answer: 'Short Answer', mixed: 'Mixed' };
 
-/* ─────────────────────────────────────
-   MCQ Quiz — show all, submit at end
-───────────────────────────────────── */
-function MCQQuiz({ questions }) {
-  const mcqs = questions.filter(q => q.type === 'mcq');
-  const [answers, setAnswers]   = useState({});   // { [id]: key }
-  const [revealed, setRevealed] = useState(false);
-
-  const allAnswered = mcqs.every(q => answers[q.id] !== undefined);
-
-  const score = revealed
-    ? mcqs.filter(q => answers[q.id] === q.answer).length
-    : null;
-
-  return (
-    <div className="quiz-shell">
-      <div className="qc-list">
-        {mcqs.map((q, i) => (
-          <MCQCard
-            key={q.id}
-            question={q.question}
-            index={i}
-            selected={answers[q.id] ?? null}
-            revealed={revealed}
-            onSelect={(key) => !revealed && setAnswers(prev => ({ ...prev, [q.id]: key }))}
-            answer={q.answer}
-            options={q.options}
-            explanation={q.explanation}
-          />
-        ))}
-      </div>
-
-      {/* Submit / Results bar */}
-      {!revealed ? (
-        <div className="quiz-submit-bar">
-          <span className="quiz-progress-text">
-            {Object.keys(answers).length} / {mcqs.length} answered
-          </span>
-          <button
-            className="quiz-submit-btn"
-            onClick={() => setRevealed(true)}
-            disabled={!allAnswered}
-          >
-            Submit All &amp; See Results
-          </button>
-        </div>
-      ) : (
-        <div className="quiz-results-bar">
-          <span className="quiz-score">
-            🎯 Score: <strong>{score}</strong> / {mcqs.length}
-          </span>
-          <span className="quiz-score-pct">
-            ({Math.round((score / mcqs.length) * 100)}%)
-          </span>
-          <button
-            className="quiz-retry-btn"
-            onClick={() => { setAnswers({}); setRevealed(false); }}
-          >
-            ↺ Retry Quiz
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ─────────────────────────────────────
-   Open Quiz — one at a time stepper
-───────────────────────────────────── */
-function OpenQuiz({ questions }) {
-  const opens = questions.filter(q => q.type !== 'mcq');
-  const [current, setCurrent] = useState(0);  // index into opens[]
-  const [done, setDone]       = useState(false);
-
-  if (opens.length === 0) return (
-    <div className="empty-state">
-      <div className="empty-state-icon">📭</div>
-      <p>No open questions in this session.</p>
-    </div>
-  );
-
-  if (done) return (
-    <div className="quiz-done-screen">
-      <div className="quiz-done-icon">🏁</div>
-      <h2 className="quiz-done-title">Session Complete!</h2>
-      <p className="quiz-done-sub">You've reviewed all {opens.length} question{opens.length > 1 ? 's' : ''}.</p>
-      <button className="quiz-retry-btn" onClick={() => { setCurrent(0); setDone(false); }}>
-        ↺ Start Over
-      </button>
-    </div>
-  );
-
-  return (
-    <OpenCard
-      question={opens[current]}
-      index={current + 1}
-      total={opens.length}
-      onNext={() => {
-        if (current + 1 >= opens.length) setDone(true);
-        else setCurrent(c => c + 1);
-      }}
-    />
-  );
-}
-
-/* ─────────────────────────────────────
-   Mixed Quiz — MCQs first, then opens
-───────────────────────────────────── */
-function MixedQuiz({ questions }) {
-  const mcqs  = questions.filter(q => q.type === 'mcq');
-  const opens = questions.filter(q => q.type !== 'mcq');
-  const [phase, setPhase] = useState(mcqs.length > 0 ? 'mcq' : 'open');
-
-  // When MCQs are done (submitted), move to opens
-  // We detect this via a local Submit wrapper
-  const [mcqDone, setMcqDone] = useState(false);
-
-  if (phase === 'mcq' && !mcqDone) {
-    return (
-      <div>
-        <div className="quiz-phase-banner">
-          📝 Phase 1 of 2 — Multiple Choice
-        </div>
-        <MCQQuizWithDone questions={mcqs} onDone={() => {
-          if (opens.length > 0) setMcqDone(true);
-        }} />
-        {mcqDone && opens.length > 0 && (
-          <div className="quiz-submit-bar" style={{ marginTop: 16 }}>
-            <button className="quiz-submit-btn" onClick={() => setPhase('open')}>
-              Continue to Open Questions →
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (opens.length > 0) {
-    return (
-      <div>
-        <div className="quiz-phase-banner">
-          ✏️ Phase 2 of 2 — Open Questions
-        </div>
-        <OpenQuiz questions={opens} />
-      </div>
-    );
-  }
-
-  return <MCQQuiz questions={mcqs} />;
-}
-
-/* Helper — MCQQuiz that calls onDone after reveal */
-function MCQQuizWithDone({ questions, onDone }) {
-  const [answers, setAnswers]   = useState({});
-  const [revealed, setRevealed] = useState(false);
-  const allAnswered = questions.every(q => answers[q.id] !== undefined);
-  const score = revealed ? questions.filter(q => answers[q.id] === q.answer).length : null;
-
-  return (
-    <div className="quiz-shell">
-      <div className="qc-list">
-        {questions.map((q, i) => (
-          <MCQCard
-            key={q.id}
-            question={q.question}
-            index={i}
-            selected={answers[q.id] ?? null}
-            revealed={revealed}
-            onSelect={(key) => !revealed && setAnswers(prev => ({ ...prev, [q.id]: key }))}
-            answer={q.answer}
-            options={q.options}
-            explanation={q.explanation}
-          />
-        ))}
-      </div>
-      {!revealed ? (
-        <div className="quiz-submit-bar">
-          <span className="quiz-progress-text">
-            {Object.keys(answers).length} / {questions.length} answered
-          </span>
-          <button
-            className="quiz-submit-btn"
-            onClick={() => { setRevealed(true); onDone(); }}
-            disabled={!allAnswered}
-          >
-            Submit MCQs &amp; Continue
-          </button>
-        </div>
-      ) : (
-        <div className="quiz-results-bar">
-          <span className="quiz-score">
-            🎯 MCQ Score: <strong>{score}</strong> / {questions.length}
-            ({Math.round((score / questions.length) * 100)}%)
-          </span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-
-/* ═══════════════════════════════════════
-   Main Session Page
-═══════════════════════════════════════ */
 export default function Session({ user, theme, onThemeToggle, collapsed, onCollapse }) {
-  const { id }    = useParams();
-  const navigate  = useNavigate();
-  const [session, setSession]   = useState(null);
+  const { id } = useParams();
+  const navigate = useNavigate();
+  
+  // Data State
+  const [session, setSession] = useState(null);
   const [sessions, setSessions] = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  
+  // Workspace State
+  const [selectedId, setSelectedId] = useState(null);
+  const [answerMode, setAnswerMode] = useState('text'); // 'text' | 'code'
+  const [responses, setResponses] = useState({}); // { [id]: { draft, result, grading } }
+  
+  // UI State
   const [deleting, setDeleting] = useState(false);
   const [showMoreModal, setShowMoreModal] = useState(false);
   const [generatingMore, setGeneratingMore] = useState(false);
-
-  // For the 'Generate More' form
-  const [moreMode, setMoreMode]   = useState('mcq');
+  const [moreMode, setMoreMode] = useState('mcq');
   const [moreCount, setMoreCount] = useState(5);
 
   useEffect(() => {
@@ -230,15 +33,65 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
       api.get(`/sessions/${id}`),
       api.get('/sessions'),
     ]).then(([res, allRes]) => {
-      setSession(res.data);
+      const sess = res.data;
+      setSession(sess);
       setSessions(allRes.data);
+      if (sess.questions?.length > 0) {
+        setSelectedId(sess.questions[0].id);
+        // Initialize responses for the first question
+        setResponses(prev => {
+          const initial = {};
+          sess.questions.forEach(q => {
+            initial[q.id] = { draft: '', result: null, grading: false };
+          });
+          return initial;
+        });
+      }
     }).catch(err => {
       setError(err.response?.data?.error || 'Failed to load session.');
     }).finally(() => setLoading(false));
   }, [id]);
 
+  const selectedQuestion = useMemo(() => 
+    session?.questions?.find(q => q.id === selectedId), 
+  [session, selectedId]);
+
+  const handleUpdateDraft = (val) => {
+    setResponses(prev => ({
+      ...prev,
+      [selectedId]: { ...prev[selectedId], draft: val }
+    }));
+  };
+
+  const handleSubmit = async () => {
+    const current = responses[selectedId];
+    if (!current?.draft?.trim()) return;
+
+    setResponses(prev => ({
+      ...prev,
+      [selectedId]: { ...prev[selectedId], grading: true }
+    }));
+
+    try {
+      const res = await api.post('/grade', {
+        questionId: selectedId,
+        studentAnswer: current.draft
+      });
+      setResponses(prev => ({
+        ...prev,
+        [selectedId]: { ...prev[selectedId], grading: false, result: res.data }
+      }));
+    } catch (err) {
+      alert('Grading failed. Please try again.');
+      setResponses(prev => ({
+        ...prev,
+        [selectedId]: { ...prev[selectedId], grading: false }
+      }));
+    }
+  };
+
   const handleDelete = async () => {
-    if (!confirm('Delete this session and all its questions?')) return;
+    if (!confirm('Delete this session?')) return;
     setDeleting(true);
     await api.delete(`/sessions/${id}`);
     navigate('/');
@@ -248,265 +101,285 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
     setGeneratingMore(true);
     try {
       const res = await api.post('/generate', {
-        text: session.course_name, // Backend uses courseName as context if text is missing
         courseName: session.course_name,
         mode: moreMode,
         count: moreCount,
         sessionId: session.id
       });
-      
       setSession(prev => ({
         ...prev,
         questions: [...prev.questions, ...res.data.questions]
       }));
+      // Initialize new responses
+      setResponses(prev => {
+        const next = { ...prev };
+        res.data.questions.forEach(q => {
+          if (!next[q.id]) next[q.id] = { draft: '', result: null, grading: false };
+        });
+        return next;
+      });
       setShowMoreModal(false);
     } catch (err) {
-      alert('Failed to generate more questions. Please try again.');
+      alert('Failed to generate more questions.');
     } finally {
       setGeneratingMore(false);
     }
   };
 
-  const fmtDate = (d) =>
-    new Date(d).toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' });
-
-  const sidebarProps = { user, sessions, theme, onThemeToggle, collapsed, onCollapse };
-
   if (loading) return (
-    <div className="app-shell">
-      <Sidebar {...sidebarProps} sessions={[]} />
-      <main className="main-content" style={{ display:'flex', alignItems:'center', justifyContent:'center' }}>
-        <div style={{ textAlign:'center' }}>
-          <span className="spinner" style={{ width:36, height:36, borderWidth:3, margin:'0 auto 12px' }} />
-          <p style={{ color:'var(--text-secondary)', fontSize:15 }}>Loading session…</p>
-        </div>
-      </main>
+    <div className="flex h-screen bg-background text-primary">
+      <Sidebar user={user} sessions={[]} collapsed={collapsed} onCollapse={onCollapse} />
+      <div className="flex-1 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-primary" />
+      </div>
     </div>
   );
-
-  if (error) return (
-    <div className="app-shell">
-      <Sidebar {...sidebarProps} />
-      <main className="main-content">
-        <div style={{ padding: 40 }}>
-          <div className="error-msg">⚠️ {error}</div>
-          <button className="btn btn-ghost" onClick={() => navigate('/')}>← Dashboard</button>
-        </div>
-      </main>
-    </div>
-  );
-
-  const questions = session?.questions || [];
-  const mcqCount  = questions.filter(q => q.type === 'mcq').length;
-  const openCount = questions.length - mcqCount;
-  const mode      = session?.mode;
-
-  // Derive instructions per mode
-  const howToLines = (() => {
-    if (mode === 'mcq') return [
-      'Select an answer for every question',
-      'Click "Submit All & See Results" when done',
-      'Correct answers are revealed all at once',
-      'You can retry the quiz as many times as you like',
-    ];
-    if (mode === 'essay' || mode === 'short_answer') return [
-      'Each question is shown one at a time',
-      'Type your answer in the box',
-      'Click "Check My Answer" for AI feedback',
-      'The model answer is revealed after grading',
-      'Move to the next question when ready',
-    ];
-    return [
-      'MCQs come first — answer all and submit',
-      'Open questions follow one at a time',
-      'AI grades your written answers intelligently',
-    ];
-  })();
 
   return (
-    <div className="app-shell">
-      <Sidebar {...sidebarProps} />
+    <div className="flex h-screen bg-background overflow-hidden">
+      <Sidebar 
+        user={user} sessions={sessions} theme={theme} 
+        onThemeToggle={onThemeToggle} collapsed={collapsed} onCollapse={onCollapse} 
+      />
 
-      <main className="main-content">
-        <div className="session-shell">
-
-          {/* ════ LEFT: quiz content ════ */}
-          <div className="session-left">
-
-            {/* Top nav */}
-            <div className="session-topbar">
-              <button className="session-back-btn" onClick={() => navigate('/')}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                Dashboard
-              </button>
-              <button className="session-delete-btn" onClick={handleDelete} disabled={deleting}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6M9 6V4h6v2"/></svg>
-                {deleting ? 'Deleting…' : 'Delete'}
-              </button>
-            </div>
-
-            {questions.length === 0 ? (
-              <div className="empty-state">
-                <div className="empty-state-icon">📭</div>
-                <h3>No questions found</h3>
-                <p>Something may have gone wrong during generation.</p>
+      <main className="flex-1 flex overflow-hidden">
+        
+        {/* ── LEFT PANEL: Workspace ── */}
+        <section className="flex-1 flex flex-col p-8 overflow-y-auto border-r border-border bg-surface-1">
+          {selectedQuestion ? (
+            <div className="max-w-4xl w-full mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              
+              {/* Question Area */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <span className="px-2 py-1 rounded bg-primary/10 text-primary text-xs font-bold uppercase tracking-wider">
+                    Question {session.questions.indexOf(selectedQuestion) + 1}
+                  </span>
+                  <span className="text-muted text-xs font-medium">
+                    {MODE_LABEL[selectedQuestion.type] || selectedQuestion.type}
+                  </span>
+                </div>
+                <h1 className="text-2xl font-semibold leading-tight text-primary">
+                  {selectedQuestion.question}
+                </h1>
               </div>
-            ) : (
-              <>
-                {(mode === 'mcq') && <MCQQuiz questions={questions} />}
-                {(mode === 'essay' || mode === 'short_answer') && <OpenQuiz questions={questions} />}
-                {(mode === 'mixed') && <MixedQuiz questions={questions} />}
-              </>
-            )}
+
+              {/* Toggle Switch */}
+              <div className="flex items-center justify-between border-b border-border pb-4">
+                <div className="flex bg-surface-2 p-1 rounded-lg border border-border shadow-inner">
+                  <button 
+                    className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${answerMode === 'text' ? 'bg-primary text-white shadow-sm' : 'text-muted hover:text-primary'}`}
+                    onClick={() => setAnswerMode('text')}
+                  >
+                    TEXT MODE
+                  </button>
+                  <button 
+                    className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${answerMode === 'code' ? 'bg-primary text-white shadow-sm' : 'text-muted hover:text-primary'}`}
+                    onClick={() => setAnswerMode('code')}
+                  >
+                    CODE MODE
+                  </button>
+                </div>
+                <div className="text-xs text-muted font-medium">
+                  Saving automatically...
+                </div>
+              </div>
+
+              {/* Input Area */}
+              <div className="min-h-[300px]">
+                {answerMode === 'text' ? (
+                  <textarea
+                    className="w-full h-80 p-6 bg-surface-2 border border-border rounded-xl focus:ring-2 focus:ring-primary focus:border-transparent outline-none resize-none text-primary font-medium leading-relaxed transition-all placeholder:text-muted/50"
+                    placeholder="Type your structured answer here..."
+                    value={responses[selectedId]?.draft || ''}
+                    onChange={(e) => handleUpdateDraft(e.target.value)}
+                    disabled={responses[selectedId]?.grading}
+                  />
+                ) : (
+                  <CodeLab 
+                    value={responses[selectedId]?.draft || ''}
+                    onChange={handleUpdateDraft}
+                    disabled={responses[selectedId]?.grading}
+                  />
+                )}
+              </div>
+
+              {/* Submit Button */}
+              <div className="flex flex-col items-center gap-4">
+                <button
+                  className={`w-full py-4 rounded-xl font-bold text-sm tracking-wide transition-all shadow-lg ${
+                    responses[selectedId]?.grading || !responses[selectedId]?.draft?.trim()
+                      ? 'bg-muted cursor-not-allowed opacity-50'
+                      : 'bg-primary text-white hover:bg-primary-dark hover:-translate-y-0.5 active:translate-y-0'
+                  }`}
+                  onClick={handleSubmit}
+                  disabled={responses[selectedId]?.grading || !responses[selectedId]?.draft?.trim()}
+                >
+                  {responses[selectedId]?.grading ? 'AI IS EVALUATING...' : 'SUBMIT FOR AI FEEDBACK'}
+                </button>
+
+                {/* Feedback Result */}
+                {responses[selectedId]?.result && (
+                  <div className={`w-full p-6 rounded-xl border-l-4 shadow-sm animate-in zoom-in-95 duration-300 ${
+                    responses[selectedId].result.score >= 70 ? 'bg-green-50/50 border-green-500' :
+                    responses[selectedId].result.score >= 30 ? 'bg-amber-50/50 border-amber-500' : 'bg-red-50/50 border-red-500'
+                  }`}>
+                    <div className="flex justify-between items-start mb-4">
+                      <h3 className="font-bold text-sm uppercase tracking-tight text-primary">AI Feedback</h3>
+                      <span className={`px-2 py-1 rounded text-xs font-black ${
+                        responses[selectedId].result.score >= 70 ? 'bg-green-100 text-green-700' :
+                        responses[selectedId].result.score >= 30 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                      }`}>
+                        {responses[selectedId].result.score}% MATCH
+                      </span>
+                    </div>
+                    <p className="text-sm leading-relaxed text-secondary mb-4">{responses[selectedId].result.feedback}</p>
+                    <div className="p-4 bg-surface-1/50 rounded-lg border border-border/50">
+                      <span className="text-[10px] font-bold text-muted uppercase block mb-1">Model Answer</span>
+                      <p className="text-xs text-muted leading-normal italic">{selectedQuestion.answer}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center opacity-40">
+              <span className="text-6xl mb-4">🖱️</span>
+              <p className="text-sm font-bold tracking-widest uppercase">Select a question to begin</p>
+            </div>
+          )}
+        </section>
+
+        {/* ── RIGHT PANEL: Navigation & Stats ── */}
+        <section className="w-80 flex flex-col bg-surface-2 border-l border-border relative">
+          
+          {/* Question List */}
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-2">
+            <h3 className="text-[10px] font-black text-muted uppercase tracking-widest mb-4 px-2">Questions</h3>
+            {session.questions.map((q, idx) => (
+              <button
+                key={q.id}
+                onClick={() => setSelectedId(q.id)}
+                className={`w-full text-left p-4 rounded-xl border transition-all duration-200 group ${
+                  selectedId === q.id 
+                    ? 'bg-primary border-primary text-white shadow-md' 
+                    : 'bg-surface-1 border-border text-primary hover:border-primary/50'
+                }`}
+              >
+                <div className="flex items-center gap-3 mb-1">
+                  <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${
+                    selectedId === q.id ? 'bg-white/20' : 'bg-muted/10'
+                  }`}>
+                    {idx + 1}
+                  </span>
+                  <span className={`text-[10px] font-bold uppercase tracking-widest opacity-60`}>
+                    {q.type}
+                  </span>
+                  {responses[q.id]?.result && (
+                    <span className="ml-auto text-[10px]">✓</span>
+                  )}
+                </div>
+                <p className={`text-xs line-clamp-2 leading-relaxed font-medium ${
+                  selectedId === q.id ? 'text-white/90' : 'text-secondary'
+                }`}>
+                  {q.question}
+                </p>
+              </button>
+            ))}
           </div>
 
-          {/* ════ RIGHT: sticky info panel ════ */}
-          <aside className="session-right">
-            <div className="session-info-panel">
+          {/* Compact Stats Card (Pinned) */}
+          <div className="p-4 bg-surface-1 border-t border-border shadow-[0_-8px_20px_-10px_rgba(0,0,0,0.1)]">
+            <div className="bg-surface-2 rounded-2xl p-5 border border-border space-y-4">
+              <div>
+                <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-black uppercase mb-2 inline-block">
+                  {MODE_LABEL[session.mode]}
+                </span>
+                <h4 className="text-sm font-bold text-primary truncate leading-none mb-1">{session.course_name}</h4>
+                <p className="text-[10px] text-muted font-medium">Created on {new Date(session.created_at).toLocaleDateString()}</p>
+              </div>
 
-              <span className="session-mode-pill">{MODE_LABEL[mode] || mode}</span>
-              <h2 className="session-panel-title">{session.course_name}</h2>
-              <p className="session-panel-date">{fmtDate(session.created_at)}</p>
-
-              <div className="session-divider" />
-
-              {/* Stats */}
-              <div className="session-stats-grid">
-                <div className="session-stat">
-                  <span className="session-stat-num">{questions.length}</span>
-                  <span className="session-stat-label">Total</span>
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <div className="bg-surface-1 p-3 rounded-xl border border-border/50">
+                  <span className="block text-[10px] font-bold text-muted uppercase mb-1">Total</span>
+                  <span className="text-xl font-black text-primary leading-none">{session.questions.length}</span>
                 </div>
-                {mcqCount > 0 && (
-                  <div className="session-stat">
-                    <span className="session-stat-num">{mcqCount}</span>
-                    <span className="session-stat-label">MCQ</span>
-                  </div>
-                )}
-                {openCount > 0 && (
-                  <div className="session-stat">
-                    <span className="session-stat-num">{openCount}</span>
-                    <span className="session-stat-label">Open</span>
-                  </div>
-                )}
+                <div className="bg-surface-1 p-3 rounded-xl border border-border/50">
+                  <span className="block text-[10px] font-bold text-muted uppercase mb-1">Open</span>
+                  <span className="text-xl font-black text-primary leading-none">
+                    {session.questions.filter(q => q.type !== 'mcq').length}
+                  </span>
+                </div>
               </div>
 
-              <div className="session-divider" />
-
-              {/* How to use */}
-              <div className="session-how">
-                <div className="session-how-title">How to use</div>
-                <ul className="session-how-list">
-                  {howToLines.map((line, i) => <li key={i}>{line}</li>)}
-                </ul>
+              <div className="flex gap-2">
+                <button 
+                  className="flex-1 py-2.5 bg-surface-1 hover:bg-muted/5 text-[10px] font-black text-muted hover:text-primary uppercase tracking-widest border border-border rounded-lg transition-all"
+                  onClick={() => setShowMoreModal(true)}
+                >
+                  Generate More
+                </button>
+                <button 
+                  className="p-2.5 bg-red-50 hover:bg-red-100 text-red-500 rounded-lg transition-all border border-red-100"
+                  onClick={handleDelete}
+                  title="Delete Session"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
               </div>
-
-              {/* MCQ legend */}
-              {(mode === 'mcq' || mode === 'mixed') && (
-                <>
-                  <div className="session-divider" />
-                  <div className="session-legend">
-                    <div className="session-legend-row">
-                      <span className="legend-dot legend-dot--green" />
-                      <span>Correct answer</span>
-                    </div>
-                    <div className="session-legend-row">
-                      <span className="legend-dot legend-dot--red" />
-                      <span>Wrong selection</span>
-                    </div>
-                    <div className="session-legend-row">
-                      <span className="legend-dot legend-dot--dim" />
-                      <span>Unselected option</span>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* Open-answer grade legend */}
-              {(mode === 'essay' || mode === 'short_answer' || mode === 'mixed') && (
-                <>
-                  <div className="session-divider" />
-                  <div className="session-legend">
-                    <div className="session-legend-row">
-                      <span className="legend-dot legend-dot--green" />
-                      <span>Correct (70–100% match)</span>
-                    </div>
-                    <div className="session-legend-row">
-                      <span className="legend-dot legend-dot--amber" />
-                      <span>Partial (30–69% match)</span>
-                    </div>
-                    <div className="session-legend-row">
-                      <span className="legend-dot legend-dot--red" />
-                      <span>Incorrect (&lt;30% match)</span>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              <div className="session-divider" />
-              <button 
-                className="session-sidebar-btn" 
-                onClick={() => setShowMoreModal(true)}
-              >
-                <span className="sidebar-btn-icon">＋</span>
-                Generate More
-              </button>
-
             </div>
-          </aside>
+          </div>
 
-        </div>
+        </section>
       </main>
 
-      {/* Generate More Modal */}
+      {/* Generate More Modal (Reused) */}
       {showMoreModal && (
-        <div className="modal-overlay" onClick={() => !generatingMore && setShowMoreModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Generate More Questions</h3>
-              <button className="modal-close" onClick={() => setShowMoreModal(false)} disabled={generatingMore}>&times;</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-surface-1 w-full max-w-md rounded-2xl shadow-2xl border border-border overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-border flex justify-between items-center">
+              <h3 className="font-bold text-primary">Generate More</h3>
+              <button className="text-muted hover:text-primary text-xl" onClick={() => setShowMoreModal(false)}>&times;</button>
             </div>
-            <div className="modal-body">
-              <p className="modal-sub">Add more questions to this session for <strong>{session.course_name}</strong>.</p>
-              
-              <div className="form-group">
-                <label>Question Type</label>
-                <div className="mode-chips">
+            <div className="p-6 space-y-6">
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-muted uppercase tracking-widest">Question Type</label>
+                <div className="flex flex-wrap gap-2">
                   {['mcq', 'short_answer', 'essay', 'code', 'mixed'].map(m => (
                     <button
                       key={m}
-                      className={`mode-chip ${moreMode === m ? 'active' : ''}`}
+                      className={`px-3 py-1.5 rounded-full text-[10px] font-bold border transition-all ${
+                        moreMode === m ? 'bg-primary border-primary text-white' : 'bg-surface-2 border-border text-muted hover:border-primary'
+                      }`}
                       onClick={() => setMoreMode(m)}
                     >
-                      {m.replace('_', ' ').toUpperCase()}
+                      {m.toUpperCase()}
                     </button>
                   ))}
                 </div>
               </div>
-
-              <div className="form-group">
-                <label>Count: {moreCount}</label>
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <label className="text-[10px] font-black text-muted uppercase tracking-widest">Count</label>
+                  <span className="text-xs font-bold text-primary">{moreCount} questions</span>
+                </div>
                 <input 
                   type="range" min="1" max="20" 
                   value={moreCount} 
                   onChange={e => setMoreCount(parseInt(e.target.value))}
-                  className="range-input"
+                  className="w-full h-1.5 bg-surface-2 rounded-lg appearance-none cursor-pointer accent-primary"
                 />
               </div>
             </div>
-            <div className="modal-footer">
+            <div className="p-6 bg-surface-2/50 flex gap-3">
+              <button className="flex-1 py-3 text-xs font-bold text-muted" onClick={() => setShowMoreModal(false)}>Cancel</button>
               <button 
-                className="lp-btn-light" 
-                onClick={() => setShowMoreModal(false)}
-                disabled={generatingMore}
-              >
-                Cancel
-              </button>
-              <button 
-                className="lp-btn-dark" 
+                className="flex-[2] py-3 bg-primary text-white rounded-xl text-xs font-bold shadow-lg shadow-primary/20"
                 onClick={handleGenerateMore}
                 disabled={generatingMore}
               >
-                {generatingMore ? 'Generating...' : '✦ Generate'}
+                {generatingMore ? 'Generating...' : 'Start Generation'}
               </button>
             </div>
           </div>
