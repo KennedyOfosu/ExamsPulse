@@ -4044,20 +4044,20 @@ body.sb-collapsed .main-content {
   transition: margin-left var(--sidebar-transition);
 }
 
-/* LEFT workspace */
+/* LEFT workspace — primary answer area */
 .sess-left {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  padding: 40px 48px;
+  padding: 32px 40px;
   border-right: 1px solid var(--border);
   background: var(--bg-2);
 }
 
 /* RIGHT narrow column */
 .sess-right {
-  width: 288px;
+  width: 240px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -4106,18 +4106,19 @@ body.sb-collapsed .main-content {
 .sess-workspace {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  max-width: 860px;
+  gap: 20px;
   width: 100%;
-  margin: 0 auto;
 }
 
-/* Progress row: counter + dots */
+/* Progress row: counter + inline dots + stats */
 .sess-progress-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 4px;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
 }
 
 .sess-progress-label {
@@ -4135,8 +4136,10 @@ body.sb-collapsed .main-content {
 .sess-dot-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: 4px;
   align-items: center;
+  overflow: hidden;
+  max-height: 32px;
 }
 
 .sess-dot {
@@ -4155,16 +4158,17 @@ body.sb-collapsed .main-content {
 
 /* Question display */
 .sess-question-block {
-  padding: 28px;
+  padding: 28px 32px;
   background: var(--card);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
+  border-left: 4px solid var(--primary);
 }
 
 .sess-question-text {
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 700;
-  line-height: 1.45;
+  line-height: 1.5;
   color: var(--text-primary);
 }
 
@@ -4213,12 +4217,12 @@ body.sb-collapsed .main-content {
 
 /* Editor area */
 .sess-editor-area {
-  min-height: 260px;
+  min-height: 320px;
 }
 
 .sess-textarea {
   width: 100%;
-  height: 260px;
+  height: 320px;
   padding: 20px 24px;
   background: var(--card);
   border: 1.5px solid var(--border);
@@ -4349,11 +4353,12 @@ body.sb-collapsed .main-content {
 .badge-skipped  { background: rgba(245,158,11,.1); border-color: rgba(245,158,11,.3); color: var(--accent); }
 .badge-unanswered { background: var(--card); border-color: var(--border); color: var(--text-muted); }
 
-/* Stats card pinned at bottom of right column */
+/* Stats card pinned at bottom of right column — compact */
 .sess-stats-card {
-  padding: 16px;
+  padding: 12px 14px;
   border-top: 1px solid var(--border);
   background: var(--bg-2);
+  flex-shrink: 0;
 }
 
 /* Summary screen */
@@ -4397,7 +4402,7 @@ body.sb-collapsed .main-content {
 }
 
 /* ------------------------------------------
-   CODELAB � Monaco Editor Panel
+   CODELAB � Monaco Editor Panel
    ------------------------------------------ */
 
 .codelab-shell {

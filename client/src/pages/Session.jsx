@@ -207,29 +207,27 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
           ) : selectedQ ? (
             <div className="sess-workspace">
 
-              {/* Progress dots + counter */}
+              {/* Compact header bar: counter + dot nav */}
               <div className="sess-progress-bar">
-                <span className="sess-progress-label">
-                  Question {currentIdx + 1} of {allQuestions.length}
+                <span className="sess-progress-label">Q {currentIdx + 1} / {allQuestions.length}</span>
+                <div className="sess-dot-row" style={{ flex: 1, justifyContent: 'center', marginLeft: 12 }}>
+                  {allQuestions.map((q, i) => {
+                    const isCur = q.id === selectedId;
+                    const isAns = responses[q.id]?.draft?.trim() || responses[q.id]?.result;
+                    const isSk = skipped.has(q.id);
+                    return (
+                      <button
+                        key={q.id}
+                        onClick={() => goTo(q.id)}
+                        title={`Q${i + 1}`}
+                        className={`sess-dot ${isCur ? 'sess-dot--active' : isAns ? 'sess-dot--answered' : isSk ? 'sess-dot--skipped' : 'sess-dot--empty'}`}
+                      />
+                    );
+                  })}
+                </div>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                  {answeredCount} done · {skipped.size} skipped
                 </span>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700 }}>
-                  {answeredCount} answered · {skipped.size} skipped
-                </span>
-              </div>
-              <div className="sess-dot-row">
-                {allQuestions.map((q, i) => {
-                  const isCur = q.id === selectedId;
-                  const isAns = responses[q.id]?.draft?.trim() || responses[q.id]?.result;
-                  const isSk = skipped.has(q.id);
-                  return (
-                    <button
-                      key={q.id}
-                      onClick={() => goTo(q.id)}
-                      title={`Q${i + 1}`}
-                      className={`sess-dot ${isCur ? 'sess-dot--active' : isAns ? 'sess-dot--answered' : isSk ? 'sess-dot--skipped' : 'sess-dot--empty'}`}
-                    />
-                  );
-                })}
               </div>
 
               {/* Question text */}
@@ -361,24 +359,37 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
             ))}
           </div>
 
-          {/* Pinned stats card */}
+          {/* Compact stats card — pinned bottom right */}
           <div className="sess-stats-card">
-            <span className="badge badge-mixed" style={{ marginBottom: 6 }}>{MODE_LABEL[session?.mode]}</span>
-            <h4 style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{session?.course_name}</h4>
-            <p style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 14 }}>Progress: {answeredCount}/{allQuestions.length}</p>
+            {/* Course + mode row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <span className="badge badge-mixed" style={{ fontSize: 9, padding: '2px 7px' }}>{MODE_LABEL[session?.mode]}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{session?.course_name}</span>
+            </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
-              {[{ label: 'Total', val: allQuestions.length }, { label: 'Open', val: allQuestions.filter(q => q.type !== 'mcq').length }].map(s => (
-                <div key={s.label} style={{ background: 'var(--bg)', padding: '10px', borderRadius: 10, border: '1px solid var(--border)' }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 2 }}>{s.label}</div>
-                  <div style={{ fontSize: 20, fontWeight: 900, color: 'var(--text-primary)' }}>{s.val}</div>
+            {/* Mini progress bar */}
+            <div style={{ height: 3, background: 'var(--border)', borderRadius: 3, marginBottom: 8, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${allQuestions.length ? (answeredCount / allQuestions.length) * 100 : 0}%`, background: 'var(--primary)', borderRadius: 3, transition: 'width 0.3s' }} />
+            </div>
+
+            {/* Stats row */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+              {[
+                { label: 'Total', val: allQuestions.length },
+                { label: 'Open', val: allQuestions.filter(q => q.type !== 'mcq').length },
+                { label: 'Done', val: answeredCount, color: 'var(--success)' },
+              ].map(s => (
+                <div key={s.label} style={{ flex: 1, background: 'var(--bg)', padding: '6px 4px', borderRadius: 8, border: '1px solid var(--border)', textAlign: 'center' }}>
+                  <div style={{ fontSize: 16, fontWeight: 900, color: s.color || 'var(--text-primary)', lineHeight: 1.2 }}>{s.val}</div>
+                  <div style={{ fontSize: 8, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.04em' }}>{s.label}</div>
                 </div>
               ))}
             </div>
 
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-ghost btn-sm" style={{ flex: 1, justifyContent: 'center', fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.05em' }} onClick={() => setShowMoreModal(true)}>+ More</button>
-              <button className="btn btn-danger btn-sm" style={{ padding: '6px 10px' }} onClick={handleDelete} disabled={deleting} title="Delete">🗑</button>
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button className="btn btn-ghost btn-sm" style={{ flex: 1, justifyContent: 'center', fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.05em' }} onClick={() => setShowMoreModal(true)}>+ More</button>
+              <button className="btn btn-danger btn-sm" style={{ padding: '5px 9px', fontSize: 12 }} onClick={handleDelete} disabled={deleting} title="Delete session">🗑</button>
             </div>
           </div>
         </div>
