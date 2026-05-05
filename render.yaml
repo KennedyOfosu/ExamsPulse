@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: examspulse-server
+    env: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: node index.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Set these in the Render dashboard (do NOT commit secrets here):
+      # SUPABASE_URL, SUPABASE_SERVICE_KEY, GROQ_API_KEY, FRONTEND_URL

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar.jsx';
 import CodeLab from '../components/CodeLab.jsx';
@@ -6,7 +6,7 @@ import api from '../lib/api.js';
 
 const MODE_LABEL = { mcq: 'MCQ', essay: 'Essay', short_answer: 'Short Answer', mixed: 'Mixed', code: 'Code' };
 
-/* Group questions by timestamp proximity (5s window = same batch) */
+/* Group questions by timestamp proximity (5s window = same generation batch) */
 function groupIntoBatches(questions) {
   if (!questions?.length) return [];
   const sorted = [...questions].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
@@ -35,6 +35,12 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
   const [responses, setResponses] = useState({});
   const [skipped, setSkipped] = useState(new Set());
   const [showSummary, setShowSummary] = useState(false);
+
+  // Explicit batch tracking: maps questionId → batchIndex
+  // This is more reliable than timestamp-only grouping when "Generate More" is used
+  const [batchMap, setBatchMap] = useState({});
+  const nextBatchIdxRef = useRef(0);
+
   const [expandedBatches, setExpandedBatches] = useState(new Set());
 
   const [showMoreModal, setShowMoreModal] = useState(false);
@@ -54,35 +60,49 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
           const init = {};
           sess.questions.forEach(q => { init[q.id] = { draft: '', result: null, grading: false }; });
           setResponses(init);
+
+          // Build initial batch map from timestamp grouping
+          const groups = groupIntoBatches(sess.questions);
+          const map = {};
+          groups.forEach((qs, i) => { qs.forEach(q => { map[q.id] = i; }); });
+          setBatchMap(map);
+          nextBatchIdxRef.current = groups.length;
+          // Expand the last batch by default
+          setExpandedBatches(new Set([`b${groups.length - 1}`]));
         }
       })
       .catch(err => setError(err.response?.data?.error || 'Failed to load.'))
       .finally(() => setLoading(false));
   }, [id]);
 
-  const batches = useMemo(() => {
-    const groups = groupIntoBatches(session?.questions);
-    return groups.map((qs, i) => ({
-      batchId: `b${i}`,
-      label: `Session ${i + 1}`,
-      time: new Date(qs[0].created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      typeLabel: [...new Set(qs.map(q => q.type))].map(t => MODE_LABEL[t] || t).join(' / '),
-      questions: qs,
-    }));
-  }, [session]);
-
-  useEffect(() => {
-    if (batches.length) setExpandedBatches(new Set([batches[batches.length - 1].batchId]));
-  }, [batches.length]);
-
   const allQuestions = useMemo(() =>
     session?.questions ? [...session.questions].sort((a, b) => new Date(a.created_at) - new Date(b.created_at)) : []
   , [session]);
 
+  // Build display batches from explicit batchMap (not just timestamps)
+  const batches = useMemo(() => {
+    if (!allQuestions.length) return [];
+    const grouped = {};
+    allQuestions.forEach(q => {
+      const idx = batchMap[q.id] ?? 0;
+      if (!grouped[idx]) grouped[idx] = [];
+      grouped[idx].push(q);
+    });
+    return Object.entries(grouped)
+      .sort(([a], [b]) => Number(a) - Number(b))
+      .map(([idx, qs]) => ({
+        batchId: `b${idx}`,
+        label: `Session ${Number(idx) + 1}`,
+        time: new Date(qs[0].created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        typeLabel: [...new Set(qs.map(q => q.type))].map(t => MODE_LABEL[t] || t).join(' / '),
+        questions: qs,
+      }));
+  }, [allQuestions, batchMap]);
+
   const currentIdx = allQuestions.findIndex(q => q.id === selectedId);
   const selectedQ = allQuestions[currentIdx];
   const resp = responses[selectedId] || {};
-  const answeredCount = Object.values(responses).filter(r => r.draft?.trim()).length;
+  const answeredCount = Object.values(responses).filter(r => r.draft?.trim() || r.result).length;
 
   const updateDraft = val => setResponses(p => ({ ...p, [selectedId]: { ...p[selectedId], draft: val } }));
 
@@ -117,13 +137,31 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
   const handleGenerateMore = async () => {
     setGeneratingMore(true);
     try {
-      const res = await api.post('/generate', { courseName: session.course_name, mode: moreMode, count: moreCount, sessionId: session.id });
+      const res = await api.post('/generate', {
+        courseName: session.course_name,
+        mode: moreMode,
+        count: moreCount,
+        sessionId: session.id,
+      });
+      const newBatchIdx = nextBatchIdxRef.current;
+      nextBatchIdxRef.current += 1;
+
+      // Assign new questions to their own explicit batch
+      setBatchMap(prev => {
+        const next = { ...prev };
+        res.data.questions.forEach(q => { next[q.id] = newBatchIdx; });
+        return next;
+      });
+
       setSession(p => ({ ...p, questions: [...p.questions, ...res.data.questions] }));
       setResponses(p => {
         const n = { ...p };
         res.data.questions.forEach(q => { if (!n[q.id]) n[q.id] = { draft: '', result: null, grading: false }; });
         return n;
       });
+
+      // Auto-expand the new batch
+      setExpandedBatches(new Set([`b${newBatchIdx}`]));
       setShowMoreModal(false);
     } catch { alert('Failed to generate.'); }
     finally { setGeneratingMore(false); }
@@ -156,164 +194,181 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
 
       <div className="sess-body">
 
-        {/* ── LEFT: Workspace ── */}
+        {/* ── LEFT: Primary answer workspace ── */}
         <div className="sess-left">
-          {showSummary ? (
-            <div className="sess-summary">
-              <div style={{ textAlign: 'center', marginBottom: 32 }}>
-                <h1 style={{ fontSize: 28, fontWeight: 900, color: 'var(--text-primary)' }}>Session Summary</h1>
-                <p style={{ color: 'var(--text-secondary)', marginTop: 6 }}>Review your progress before finishing.</p>
-              </div>
 
-              <div className="sess-summary-stats">
-                {[
-                  { label: 'Answered', val: answeredCount, color: 'var(--success)' },
-                  { label: 'Skipped', val: skipped.size, color: 'var(--accent)' },
-                  { label: 'Unanswered', val: allQuestions.length - answeredCount - skipped.size, color: 'var(--text-muted)' },
-                ].map(s => (
-                  <div key={s.label} className="sess-summary-stat">
-                    <span style={{ fontSize: 32, fontWeight: 900, color: s.color }}>{s.val}</span>
-                    <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em', marginTop: 4 }}>{s.label}</span>
-                  </div>
-                ))}
-              </div>
+          {/* Scrollable content area */}
+          <div className="sess-left-scroll">
+            {showSummary ? (
+              <div className="sess-summary">
+                <div style={{ textAlign: 'center', marginBottom: 32 }}>
+                  <h1 style={{ fontSize: 28, fontWeight: 900, color: 'var(--text-primary)' }}>Session Summary</h1>
+                  <p style={{ color: 'var(--text-secondary)', marginTop: 6 }}>Review your progress before finishing.</p>
+                </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {allQuestions.map((q, i) => {
-                  const r = responses[q.id];
-                  const isAns = r?.draft?.trim() || r?.result;
-                  const isSk = skipped.has(q.id);
-                  return (
-                    <div key={q.id} className="sess-summary-row">
-                      <span className={`sess-summary-badge ${isAns ? 'badge-answered' : isSk ? 'badge-skipped' : 'badge-unanswered'}`}>{i + 1}</span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.question}</p>
-                        <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: isAns ? 'var(--success)' : isSk ? 'var(--accent)' : 'var(--text-muted)' }}>
-                          {isAns ? 'Answered' : isSk ? 'Skipped' : 'Unanswered'}
-                        </span>
-                      </div>
-                      <button className="btn btn-ghost btn-sm" onClick={() => goTo(q.id)}>Review</button>
+                <div className="sess-summary-stats">
+                  {[
+                    { label: 'Answered', val: answeredCount, color: 'var(--success)' },
+                    { label: 'Skipped', val: skipped.size, color: 'var(--accent)' },
+                    { label: 'Unanswered', val: allQuestions.length - answeredCount - skipped.size, color: 'var(--text-muted)' },
+                  ].map(s => (
+                    <div key={s.label} className="sess-summary-stat">
+                      <span style={{ fontSize: 32, fontWeight: 900, color: s.color }}>{s.val}</span>
+                      <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em', marginTop: 4 }}>{s.label}</span>
                     </div>
-                  );
-                })}
-              </div>
+                  ))}
+                </div>
 
-              <div style={{ textAlign: 'center', marginTop: 40 }}>
-                <button className="btn btn-primary" style={{ padding: '14px 40px', fontSize: 14 }} onClick={() => navigate('/')}>
-                  Finish &amp; Return Home
-                </button>
-              </div>
-            </div>
-          ) : selectedQ ? (
-            <div className="sess-workspace">
-
-              {/* Compact header bar: counter + dot nav */}
-              <div className="sess-progress-bar">
-                <span className="sess-progress-label">Q {currentIdx + 1} / {allQuestions.length}</span>
-                <div className="sess-dot-row" style={{ flex: 1, justifyContent: 'center', marginLeft: 12 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {allQuestions.map((q, i) => {
-                    const isCur = q.id === selectedId;
-                    const isAns = responses[q.id]?.draft?.trim() || responses[q.id]?.result;
+                    const r = responses[q.id];
+                    const isAns = r?.draft?.trim() || r?.result;
                     const isSk = skipped.has(q.id);
                     return (
-                      <button
-                        key={q.id}
-                        onClick={() => goTo(q.id)}
-                        title={`Q${i + 1}`}
-                        className={`sess-dot ${isCur ? 'sess-dot--active' : isAns ? 'sess-dot--answered' : isSk ? 'sess-dot--skipped' : 'sess-dot--empty'}`}
-                      />
+                      <div key={q.id} className="sess-summary-row">
+                        <span className={`sess-summary-badge ${isAns ? 'badge-answered' : isSk ? 'badge-skipped' : 'badge-unanswered'}`}>{i + 1}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.question}</p>
+                          <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: isAns ? 'var(--success)' : isSk ? 'var(--accent)' : 'var(--text-muted)' }}>
+                            {isAns ? 'Answered' : isSk ? 'Skipped' : 'Unanswered'}
+                          </span>
+                        </div>
+                        <button className="btn btn-ghost btn-sm" onClick={() => goTo(q.id)}>Review</button>
+                      </div>
                     );
                   })}
                 </div>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, whiteSpace: 'nowrap' }}>
-                  {answeredCount} done · {skipped.size} skipped
-                </span>
-              </div>
 
-              {/* Question text */}
-              <div className="sess-question-block">
-                <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center' }}>
-                  <span className="badge badge-mixed">{MODE_LABEL[selectedQ.type] || selectedQ.type}</span>
-                  {skipped.has(selectedId) && <span className="badge" style={{ background: 'rgba(245,158,11,.15)', color: 'var(--accent)' }}>Skipped</span>}
-                </div>
-                <h1 className="sess-question-text">{selectedQ.question}</h1>
-              </div>
-
-              {/* Mode toggle */}
-              <div className="sess-mode-toggle">
-                <div className="sess-mode-switch">
-                  {['text', 'code'].map(m => (
-                    <button key={m} onClick={() => setAnswerMode(m)}
-                      className={`sess-mode-btn ${answerMode === m ? 'sess-mode-btn--active' : ''}`}>
-                      {m === 'text' ? 'Text Mode' : 'Code Mode'}
-                    </button>
-                  ))}
-                </div>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Auto-saving draft</span>
-              </div>
-
-              {/* Editor */}
-              <div className="sess-editor-area">
-                {answerMode === 'text' ? (
-                  <textarea
-                    className="sess-textarea"
-                    placeholder="Type your answer here..."
-                    value={resp.draft || ''}
-                    onChange={e => updateDraft(e.target.value)}
-                    disabled={resp.grading}
-                  />
-                ) : (
-                  <CodeLab value={resp.draft || ''} onChange={updateDraft} disabled={resp.grading} />
-                )}
-              </div>
-
-              {/* Submit */}
-              <button
-                className={`btn ${resp.draft?.trim() && !resp.grading ? 'btn-primary' : ''}`}
-                style={{ width: '100%', justifyContent: 'center', padding: '14px', fontSize: 13, fontWeight: 800, letterSpacing: '0.05em', ...((!resp.draft?.trim() || resp.grading) ? { background: 'var(--surface-2)', color: 'var(--text-muted)', border: '1px solid var(--border)', cursor: 'not-allowed' } : {}) }}
-                onClick={handleSubmit}
-                disabled={resp.grading || !resp.draft?.trim()}
-              >
-                {resp.grading ? 'AI Evaluating…' : 'Submit for AI Feedback'}
-              </button>
-
-              {/* Result */}
-              {resp.result && (
-                <div className={`sess-result ${resp.result.score >= 70 ? 'sess-result--correct' : resp.result.score >= 30 ? 'sess-result--partial' : 'sess-result--wrong'}`}>
-                  <div className="sess-result-header">
-                    <span style={{ fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-primary)' }}>AI Feedback</span>
-                    <span className={`badge ${resp.result.score >= 70 ? 'badge-answered-pill' : resp.result.score >= 30 ? 'badge-skipped-pill' : 'badge-wrong-pill'}`}>{resp.result.score}%</span>
-                  </div>
-                  <p style={{ fontSize: 14, lineHeight: 1.6, color: 'var(--text-secondary)', marginBottom: 12 }}>{resp.result.feedback}</p>
-                  <div className="sess-model-answer">
-                    <span style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Model Answer</span>
-                    <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5, fontStyle: 'italic' }}>{selectedQ.answer}</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Nav controls */}
-              <div className="sess-nav-controls">
-                <button className="btn btn-ghost" onClick={goPrev} disabled={currentIdx === 0}>← Prev</button>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button className="btn" style={{ border: '1px solid var(--accent)', color: 'var(--accent)', background: 'rgba(245,158,11,.08)' }} onClick={doSkip}>Skip</button>
-                  <button className="btn btn-ghost" onClick={() => setShowSummary(true)}>Summary</button>
-                  <button className="btn btn-primary" onClick={goNext}>
-                    {currentIdx === allQuestions.length - 1 ? 'Finish' : 'Next →'}
+                <div style={{ textAlign: 'center', marginTop: 40 }}>
+                  <button className="btn btn-primary" style={{ padding: '14px 40px', fontSize: 14 }} onClick={() => navigate('/')}>
+                    Finish &amp; Return Home
                   </button>
                 </div>
               </div>
+            ) : selectedQ ? (
+              <div className="sess-workspace">
 
-            </div>
-          ) : (
-            <div className="sess-empty-state">
-              <span style={{ fontSize: 48, display: 'block', marginBottom: 12 }}>🖱️</span>
-              <p style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)' }}>Select a question to begin</p>
+                {/* Compact header: counter + dot nav + stats */}
+                <div className="sess-progress-bar">
+                  <span className="sess-progress-label">Q {currentIdx + 1} / {allQuestions.length}</span>
+                  <div className="sess-dot-row" style={{ flex: 1, justifyContent: 'center', marginLeft: 12 }}>
+                    {allQuestions.map((q, i) => {
+                      const isCur = q.id === selectedId;
+                      const isAns = responses[q.id]?.draft?.trim() || responses[q.id]?.result;
+                      const isSk = skipped.has(q.id);
+                      return (
+                        <button
+                          key={q.id}
+                          onClick={() => goTo(q.id)}
+                          title={`Q${i + 1}`}
+                          className={`sess-dot ${isCur ? 'sess-dot--active' : isAns ? 'sess-dot--answered' : isSk ? 'sess-dot--skipped' : 'sess-dot--empty'}`}
+                        />
+                      );
+                    })}
+                  </div>
+                  <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                    {answeredCount} done · {skipped.size} skipped
+                  </span>
+                </div>
+
+                {/* Question display */}
+                <div className="sess-question-block">
+                  <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center' }}>
+                    <span className="badge badge-mixed">{MODE_LABEL[selectedQ.type] || selectedQ.type}</span>
+                    {skipped.has(selectedId) && <span className="badge" style={{ background: 'rgba(245,158,11,.15)', color: 'var(--accent)' }}>Skipped</span>}
+                  </div>
+                  <h1 className="sess-question-text">{selectedQ.question}</h1>
+                </div>
+
+                {/* Mode toggle */}
+                <div className="sess-mode-toggle">
+                  <div className="sess-mode-switch">
+                    {['text', 'code'].map(m => (
+                      <button key={m} onClick={() => setAnswerMode(m)}
+                        className={`sess-mode-btn ${answerMode === m ? 'sess-mode-btn--active' : ''}`}>
+                        {m === 'text' ? 'Text Mode' : 'Code Mode'}
+                      </button>
+                    ))}
+                  </div>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Draft auto-saved</span>
+                </div>
+
+                {/* Answer editor — draft is shared across mode switches */}
+                <div className="sess-editor-area">
+                  {answerMode === 'text' ? (
+                    <textarea
+                      className="sess-textarea"
+                      placeholder="Type your answer here..."
+                      value={resp.draft || ''}
+                      onChange={e => updateDraft(e.target.value)}
+                      disabled={resp.grading}
+                    />
+                  ) : (
+                    <CodeLab value={resp.draft || ''} onChange={updateDraft} disabled={resp.grading} />
+                  )}
+                </div>
+
+                {/* Submit */}
+                <button
+                  className={`btn ${resp.draft?.trim() && !resp.grading ? 'btn-primary' : ''}`}
+                  style={{
+                    width: '100%', justifyContent: 'center', padding: '14px',
+                    fontSize: 13, fontWeight: 800, letterSpacing: '0.05em',
+                    ...( (!resp.draft?.trim() || resp.grading) ? { background: 'var(--surface-2)', color: 'var(--text-muted)', border: '1px solid var(--border)', cursor: 'not-allowed' } : {} )
+                  }}
+                  onClick={handleSubmit}
+                  disabled={resp.grading || !resp.draft?.trim()}
+                >
+                  {resp.grading ? 'AI Evaluating…' : 'Submit for AI Feedback'}
+                </button>
+
+                {/* AI result */}
+                {resp.result && (
+                  <div className={`sess-result ${resp.result.score >= 70 ? 'sess-result--correct' : resp.result.score >= 30 ? 'sess-result--partial' : 'sess-result--wrong'}`}>
+                    <div className="sess-result-header">
+                      <span style={{ fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-primary)' }}>AI Feedback</span>
+                      <span className={`badge ${resp.result.score >= 70 ? 'badge-answered-pill' : resp.result.score >= 30 ? 'badge-skipped-pill' : 'badge-wrong-pill'}`}>{resp.result.score}%</span>
+                    </div>
+                    <p style={{ fontSize: 14, lineHeight: 1.6, color: 'var(--text-secondary)', marginBottom: 12 }}>{resp.result.feedback}</p>
+                    <div className="sess-model-answer">
+                      <span style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Model Answer</span>
+                      <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5, fontStyle: 'italic' }}>{selectedQ.answer}</p>
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            ) : (
+              <div className="sess-empty-state">
+                <span style={{ fontSize: 48, display: 'block', marginBottom: 12 }}>🖱️</span>
+                <p style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)' }}>Select a question to begin</p>
+              </div>
+            )}
+          </div>{/* end sess-left-scroll */}
+
+          {/* ── Nav bar — always visible at bottom of left panel ── */}
+          {!showSummary && selectedQ && (
+            <div className="sess-nav-bar">
+              <button className="btn btn-ghost" onClick={goPrev} disabled={currentIdx === 0}>← Prev</button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  className="btn"
+                  style={{ border: '1px solid var(--accent)', color: 'var(--accent)', background: 'rgba(245,158,11,.08)' }}
+                  onClick={doSkip}
+                >
+                  Skip
+                </button>
+                <button className="btn btn-ghost" onClick={() => setShowSummary(true)}>Summary</button>
+                <button className="btn btn-primary" onClick={goNext}>
+                  {currentIdx === allQuestions.length - 1 ? 'Finish' : 'Next →'}
+                </button>
+              </div>
             </div>
           )}
-        </div>
 
-        {/* ── RIGHT: Batch list + Stats ── */}
+        </div>{/* end sess-left */}
+
+        {/* ── RIGHT: Questions list + compact stats ── */}
         <div className="sess-right">
 
           <div className="sess-right-list">
@@ -328,7 +383,11 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
                       {batch.questions.length} Qs · {batch.time} · {batch.typeLabel}
                     </div>
                   </div>
-                  <span style={{ fontSize: 10, color: 'var(--text-muted)', transition: 'transform 0.2s', display: 'inline-block', transform: expandedBatches.has(batch.batchId) ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+                  <span style={{
+                    fontSize: 10, color: 'var(--text-muted)', transition: 'transform 0.2s',
+                    display: 'inline-block',
+                    transform: expandedBatches.has(batch.batchId) ? 'rotate(180deg)' : 'rotate(0deg)',
+                  }}>▼</span>
                 </button>
 
                 {expandedBatches.has(batch.batchId) && (
@@ -361,18 +420,20 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
 
           {/* Compact stats card — pinned bottom right */}
           <div className="sess-stats-card">
-            {/* Course + mode row */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
               <span className="badge badge-mixed" style={{ fontSize: 9, padding: '2px 7px' }}>{MODE_LABEL[session?.mode]}</span>
               <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{session?.course_name}</span>
             </div>
 
-            {/* Mini progress bar */}
+            {/* Mini progress fill */}
             <div style={{ height: 3, background: 'var(--border)', borderRadius: 3, marginBottom: 8, overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${allQuestions.length ? (answeredCount / allQuestions.length) * 100 : 0}%`, background: 'var(--primary)', borderRadius: 3, transition: 'width 0.3s' }} />
+              <div style={{
+                height: '100%',
+                width: `${allQuestions.length ? (answeredCount / allQuestions.length) * 100 : 0}%`,
+                background: 'var(--primary)', borderRadius: 3, transition: 'width 0.3s',
+              }} />
             </div>
 
-            {/* Stats row */}
             <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
               {[
                 { label: 'Total', val: allQuestions.length },
@@ -386,13 +447,13 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
               ))}
             </div>
 
-            {/* Actions */}
             <div style={{ display: 'flex', gap: 6 }}>
               <button className="btn btn-ghost btn-sm" style={{ flex: 1, justifyContent: 'center', fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.05em' }} onClick={() => setShowMoreModal(true)}>+ More</button>
               <button className="btn btn-danger btn-sm" style={{ padding: '5px 9px', fontSize: 12 }} onClick={handleDelete} disabled={deleting} title="Delete session">🗑</button>
             </div>
           </div>
-        </div>
+
+        </div>{/* end sess-right */}
       </div>
 
       {/* Generate More Modal */}
@@ -404,7 +465,7 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
               <button className="modal-close" onClick={() => setShowMoreModal(false)} disabled={generatingMore}>&times;</button>
             </div>
             <div className="modal-body">
-              <p className="modal-sub">Add more questions to <strong>{session.course_name}</strong>.</p>
+              <p className="modal-sub">Add a new session batch to <strong>{session.course_name}</strong>.</p>
               <div className="form-group">
                 <label>Question Type</label>
                 <div className="mode-chips">

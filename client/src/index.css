@@ -4049,10 +4049,30 @@ body.sb-collapsed .main-content {
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
-  padding: 32px 40px;
+  overflow: hidden;           /* outer container never scrolls */
   border-right: 1px solid var(--border);
   background: var(--bg-2);
+}
+
+/* Scrollable content inside left panel */
+.sess-left-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px 40px;
+}
+.sess-left-scroll::-webkit-scrollbar { width: 4px; }
+.sess-left-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+/* Nav bar — always pinned to bottom of left panel */
+.sess-nav-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 40px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-2);
+  gap: 12px;
 }
 
 /* RIGHT narrow column */
@@ -4277,7 +4297,7 @@ body.sb-collapsed .main-content {
 .badge-skipped-pill  { background: rgba(245,158,11,.15); color: var(--accent); }
 .badge-wrong-pill    { background: rgba(239,68,68,.15); color: var(--danger); }
 
-/* Navigation controls */
+/* Legacy nav-controls alias — kept for any references */
 .sess-nav-controls {
   display: flex;
   align-items: center;
@@ -4285,7 +4305,6 @@ body.sb-collapsed .main-content {
   padding-top: 20px;
   border-top: 1px solid var(--border);
   gap: 12px;
-  margin-top: auto;
 }
 
 /* ── Right sidebar items ── */
