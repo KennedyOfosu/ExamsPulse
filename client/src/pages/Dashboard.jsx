@@ -319,17 +319,6 @@ export default function Dashboard({ user, theme, onThemeToggle, collapsed, onCol
             </p>
           )}
 
-          {/* Folder grid sessions */}
-          {sessions.length > 0 && (
-            <div className="session-folders">
-              <div className="session-folders-title">Recent Sessions</div>
-              <div className="session-folders-grid">
-                {sessions.slice(0, 8).map(s => (
-                  <FolderCard key={s.id} session={s} />
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </main>
 
