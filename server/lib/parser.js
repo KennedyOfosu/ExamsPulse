@@ -54,11 +54,8 @@ const extractFromPDF = async (buffer) => {
 
 const extractFromOffice = async (buffer, filename) => {
   try {
-    const text = await parseOffice(buffer, {
-      outputErrorToConsole: false,
-      newlineDelimiter: ' ',
-    });
-    const cleaned = text?.trim();
+    const ast = await parseOffice(buffer);
+    const cleaned = ast.toText()?.trim();
     if (!cleaned || cleaned.length < 20) {
       throw new Error(`Could not extract readable text from "${filename}". The file may be empty or image-based.`);
     }
