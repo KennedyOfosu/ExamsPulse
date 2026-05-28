@@ -1,5 +1,8 @@
 import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import { parseOffice } from 'officeparser';
+import { writeFile, unlink } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 const SUPPORTED_TYPES = {
   'application/pdf': 'pdf',
@@ -53,8 +56,13 @@ const extractFromPDF = async (buffer) => {
 };
 
 const extractFromOffice = async (buffer, filename) => {
+  // officeparser v6 uses magic bytes for Buffer input, but PPTX/DOCX look like ZIP.
+  // Write to a named temp file so it uses the extension for format detection.
+  const ext = filename.split('.').pop().toLowerCase();
+  const tmpPath = join(tmpdir(), `ep_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`);
   try {
-    const ast = await parseOffice(buffer);
+    await writeFile(tmpPath, buffer);
+    const ast = await parseOffice(tmpPath);
     const cleaned = ast.toText()?.trim();
     if (!cleaned || cleaned.length < 20) {
       throw new Error(`Could not extract readable text from "${filename}". The file may be empty or image-based.`);
@@ -63,5 +71,7 @@ const extractFromOffice = async (buffer, filename) => {
   } catch (err) {
     if (err.message.includes('readable text')) throw err;
     throw new Error(`Failed to parse "${filename}": ` + err.message);
+  } finally {
+    unlink(tmpPath).catch(() => {});
   }
 };
