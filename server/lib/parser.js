@@ -1,5 +1,5 @@
 import pdfParse from 'pdf-parse/lib/pdf-parse.js';
-import officeParser from 'officeparser';
+import { parseOffice } from 'officeparser';
 
 const SUPPORTED_TYPES = {
   'application/pdf': 'pdf',
@@ -54,7 +54,7 @@ const extractFromPDF = async (buffer) => {
 
 const extractFromOffice = async (buffer, filename) => {
   try {
-    const text = await officeParser.parseOfficeAsync(buffer, {
+    const text = await parseOffice(buffer, {
       outputErrorToConsole: false,
       newlineDelimiter: ' ',
     });
