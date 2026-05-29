@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npm list *)",
+      "Bash(Remove-Item -Recurse -Force \"c:\\\\Users\\\\Ken-Agbedus Consult\\\\Documents\\\\SIIMT\\\\4.1\\\\Project\\\\ExamsPulse\\\\client\\\\node_modules\\\\.vite\" -ErrorAction SilentlyContinue)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(cat \"c:\\\\Users\\\\Ken-Agbedus Consult\\\\.claude\\\\projects\\\\c--Users-Ken-Agbedus-Consult-Documents-SIIMT-4-1-Project-ExamsPulse\\\\memory\\\\MEMORY.md\" 2>/dev/null || echo \"NOT FOUND\")",
+      "Read(//c/Users/Ken-Agbedus Consult/.claude/projects/c--Users-Ken-Agbedus-Consult-Documents-SIIMT-4-1-Project-ExamsPulse/memory/**)",
+      "Bash(node -e \"import\\('officeparser'\\).then\\(m => console.log\\(Object.keys\\(m\\)\\)\\)\")",
+      "Bash(node -e \"import\\('officeparser'\\).then\\(m => { console.log\\(typeof m.parseOffice\\); console.log\\(m.parseOffice.toString\\(\\).substring\\(0, 300\\)\\); }\\)\")",
+      "Bash(node -e \"const op = require\\('./node_modules/officeparser/src/officeparser.js'\\); console.log\\(Object.keys\\(op\\)\\)\")",
+      "Bash(node --input-type=module -e \"import op from './node_modules/officeparser/src/officeparser.js'; console.log\\(Object.keys\\(op\\)\\)\")",
+      "Bash(git commit *)",
+      "Bash(node --input-type=module)"
+    ]
+  }
+}

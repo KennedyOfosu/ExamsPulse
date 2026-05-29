@@ -88,6 +88,32 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
     session?.questions ? [...session.questions].sort((a, b) => new Date(a.created_at) - new Date(b.created_at)) : []
   , [session]);
 
+  // Group questions by their topic field for the summary view
+  const topicGroups = useMemo(() => {
+    const map = {};
+    allQuestions.forEach(q => {
+      const key = q.topic?.trim() || 'General';
+      if (!map[key]) map[key] = [];
+      map[key].push(q);
+    });
+    return Object.entries(map).map(([topic, qs]) => {
+      let correct = 0, wrong = 0, partial = 0;
+      qs.forEach(q => {
+        const r = responses[q.id];
+        if (!r?.result) return;
+        if (q.type === 'mcq') {
+          if (r.result.correct) correct++; else wrong++;
+        } else {
+          if (r.result.score === 'correct') correct++;
+          else if (r.result.score === 'partial') partial++;
+          else wrong++;
+        }
+      });
+      const types = [...new Set(qs.map(q => MODE_LABEL[q.type] || q.type))];
+      return { topic, questions: qs, correct, wrong, partial, types };
+    });
+  }, [allQuestions, responses]);
+
   // Build display batches from explicit batchMap (not just timestamps)
   const batches = useMemo(() => {
     if (!allQuestions.length) return [];
@@ -290,39 +316,65 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
                   ))}
                 </div>
 
-                {/* Per-question breakdown */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {allQuestions.map((q, i) => {
-                    const r = responses[q.id];
-                    const isSk = skipped.has(q.id);
-                    let resultLabel = 'Unanswered';
-                    let resultColor = 'var(--text-muted)';
-                    let badgeCls = 'badge-unanswered';
-                    if (r?.result) {
-                      if (q.type === 'mcq') {
-                        if (r.result.correct) { resultLabel = 'Correct'; resultColor = 'var(--success)'; badgeCls = 'badge-answered'; }
-                        else { resultLabel = 'Wrong'; resultColor = 'var(--danger)'; badgeCls = 'badge-wrong'; }
-                      } else {
-                        if (r.result.score === 'correct')   { resultLabel = 'Correct'; resultColor = 'var(--success)'; badgeCls = 'badge-answered'; }
-                        else if (r.result.score === 'partial') { resultLabel = 'Partial'; resultColor = 'var(--accent)'; badgeCls = 'badge-skipped'; }
-                        else { resultLabel = 'Wrong'; resultColor = 'var(--danger)'; badgeCls = 'badge-wrong'; }
-                      }
-                    } else if (isSk) {
-                      resultLabel = 'Skipped'; resultColor = 'var(--accent)'; badgeCls = 'badge-skipped';
-                    }
-                    return (
-                      <div key={q.id} className="sess-summary-row">
-                        <span className={`sess-summary-badge ${badgeCls}`}>{i + 1}</span>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.question}</p>
-                          <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: resultColor, letterSpacing: '0.04em' }}>
-                            {resultLabel}
-                          </span>
+                {/* Topics Covered */}
+                <div>
+                  <p style={{ fontSize: 10, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: 10 }}>
+                    Topics Covered
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {topicGroups.map(group => {
+                      const graded = group.correct + group.wrong + group.partial;
+                      const pct = graded > 0 ? Math.round((group.correct / graded) * 100) : null;
+                      const barColor = pct === null ? 'var(--border)' : pct >= 70 ? 'var(--success)' : pct >= 40 ? 'var(--accent)' : 'var(--danger)';
+                      return (
+                        <div key={group.topic} className="sess-topic-card">
+                          {/* Header row */}
+                          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <p style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', marginBottom: 3, lineHeight: 1.3 }}>{group.topic}</p>
+                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                {group.types.map(t => (
+                                  <span key={t} style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px' }}>{t}</span>
+                                ))}
+                                <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.04em' }}>{group.questions.length} question{group.questions.length !== 1 ? 's' : ''}</span>
+                              </div>
+                            </div>
+                            {pct !== null && (
+                              <span style={{ fontSize: 18, fontWeight: 900, color: barColor, minWidth: 44, textAlign: 'right' }}>{pct}%</span>
+                            )}
+                          </div>
+
+                          {/* Score bar */}
+                          <div style={{ height: 4, background: 'var(--border)', borderRadius: 4, overflow: 'hidden', marginBottom: 8 }}>
+                            <div style={{ height: '100%', width: pct !== null ? `${pct}%` : '0%', background: barColor, borderRadius: 4, transition: 'width 0.4s' }} />
+                          </div>
+
+                          {/* Mini stat pills */}
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                            {group.correct > 0 && (
+                              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--success)' }}>✓ {group.correct} correct</span>
+                            )}
+                            {group.wrong > 0 && (
+                              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--danger)' }}>✗ {group.wrong} wrong</span>
+                            )}
+                            {group.partial > 0 && (
+                              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)' }}>~ {group.partial} partial</span>
+                            )}
+                            {graded === 0 && (
+                              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)' }}>Not attempted</span>
+                            )}
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              style={{ marginLeft: 'auto', fontSize: 10 }}
+                              onClick={() => { setShowSummary(false); goTo(group.questions[0].id); }}
+                            >
+                              Review →
+                            </button>
+                          </div>
                         </div>
-                        <button className="btn btn-ghost btn-sm" onClick={() => { setShowSummary(false); goTo(q.id); }}>Review</button>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
 
                 {/* Actions */}

@@ -28,6 +28,7 @@ Return ONLY a JSON array (no markdown, no \`\`\`json fences) with this exact str
 [
   {
     "type": "mcq",
+    "topic": "Concise topic name (3-6 words, e.g. 'Object-Oriented Inheritance')",
     "question": "Full question text?",
     "options": {"A": "...", "B": "...", "C": "...", "D": "..."},
     "answer": "A",
@@ -35,6 +36,7 @@ Return ONLY a JSON array (no markdown, no \`\`\`json fences) with this exact str
   },
   {
     "type": "short_answer",
+    "topic": "Concise topic name (3-6 words)",
     "question": "Full question text?",
     "options": null,
     "answer": "The model answer.",
@@ -42,6 +44,7 @@ Return ONLY a JSON array (no markdown, no \`\`\`json fences) with this exact str
   },
   {
     "type": "essay",
+    "topic": "Concise topic name (3-6 words)",
     "question": "Full question text?",
     "options": null,
     "answer": "A detailed model answer.",
@@ -49,12 +52,15 @@ Return ONLY a JSON array (no markdown, no \`\`\`json fences) with this exact str
   },
   {
     "type": "code",
+    "topic": "Concise topic name (3-6 words)",
     "question": "Write a function that...",
     "options": null,
     "answer": "function example() { ... }",
     "explanation": "Explanation of the code logic."
   }
-]`;
+]
+
+IMPORTANT: Every question MUST include a "topic" field. Group related questions under the same topic name. Use sentence case (not ALL CAPS).`;
 
   const response = await groq.chat.completions.create({
     model: 'llama-3.3-70b-versatile',
