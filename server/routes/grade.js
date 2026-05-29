@@ -1,5 +1,6 @@
 import express from 'express';
 import { requireAuth } from '../middleware/auth.js';
+import { createUserClient } from '../lib/supabase.js';
 import Groq from 'groq-sdk';
 import dotenv from 'dotenv';
 dotenv.config();
@@ -9,16 +10,27 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 /**
  * POST /api/grade
- * Body: { question, modelAnswer, studentAnswer }
+ * Body: { questionId, studentAnswer }
  * Returns: { score: 'correct'|'partial'|'incorrect', feedback, similarity }
  */
 router.post('/', requireAuth, async (req, res) => {
   try {
-    const { question, modelAnswer, studentAnswer } = req.body;
+    const { questionId, studentAnswer } = req.body;
 
-    if (!question || !modelAnswer || !studentAnswer?.trim()) {
-      return res.status(400).json({ error: 'question, modelAnswer, and studentAnswer are required.' });
+    if (!questionId || !studentAnswer?.trim()) {
+      return res.status(400).json({ error: 'questionId and studentAnswer are required.' });
     }
+
+    const supabase = createUserClient(req.token);
+    const { data: qRow, error: qErr } = await supabase
+      .from('questions')
+      .select('question, answer')
+      .eq('id', questionId)
+      .single();
+    if (qErr || !qRow) return res.status(404).json({ error: 'Question not found.' });
+
+    const question  = qRow.question;
+    const modelAnswer = qRow.answer;
 
     const prompt = `You are an academic grading assistant. Evaluate the student's answer against the model answer.
 Be generous and lenient — students often express correct ideas in different words or alternative coding styles.

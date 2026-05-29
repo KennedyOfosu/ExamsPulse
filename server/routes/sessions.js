@@ -27,6 +27,18 @@ router.get('/:id', requireAuth, async (req, res) => {
   res.json(session);
 });
 
+// PATCH /api/sessions/:id/complete — save score summary + responses
+router.patch('/:id/complete', requireAuth, async (req, res) => {
+  const { score_summary } = req.body;
+  const supabase = createUserClient(req.token);
+  const { error } = await supabase
+    .from('sessions')
+    .update({ score_summary, completed_at: new Date().toISOString() })
+    .eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
 // DELETE /api/sessions/:id
 router.delete('/:id', requireAuth, async (req, res) => {
   const supabase = createUserClient(req.token);

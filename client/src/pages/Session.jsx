@@ -36,11 +36,8 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
   const [skipped, setSkipped] = useState(new Set());
   const [showSummary, setShowSummary] = useState(false);
 
-  // Explicit batch tracking: maps questionId → batchIndex
-  // This is more reliable than timestamp-only grouping when "Generate More" is used
   const [batchMap, setBatchMap] = useState({});
   const nextBatchIdxRef = useRef(0);
-
   const [expandedBatches, setExpandedBatches] = useState(new Set());
 
   const [showMoreModal, setShowMoreModal] = useState(false);
@@ -48,6 +45,9 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
   const [moreMode, setMoreMode] = useState('mcq');
   const [moreCount, setMoreCount] = useState(5);
   const [deleting, setDeleting] = useState(false);
+
+  // Tracks whether we've already saved results for this session visit
+  const savedRef = useRef(false);
 
   useEffect(() => {
     Promise.all([api.get(`/sessions/${id}`), api.get('/sessions')])
@@ -57,17 +57,26 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
         setSessions(allRes.data);
         if (sess.questions?.length) {
           setSelectedId(sess.questions[0].id);
+
+          // Restore saved responses if the session was previously completed
+          const saved = sess.score_summary?.responses;
           const init = {};
-          sess.questions.forEach(q => { init[q.id] = { draft: '', result: null, grading: false }; });
+          sess.questions.forEach(q => {
+            init[q.id] = saved?.[q.id] || { draft: '', result: null, grading: false };
+          });
           setResponses(init);
 
-          // Build initial batch map from timestamp grouping
+          if (saved) {
+            setSkipped(new Set(sess.score_summary?.skippedIds || []));
+            savedRef.current = true; // already saved — don't re-save on summary view
+            setShowSummary(true);   // go straight to results screen
+          }
+
           const groups = groupIntoBatches(sess.questions);
           const map = {};
           groups.forEach((qs, i) => { qs.forEach(q => { map[q.id] = i; }); });
           setBatchMap(map);
           nextBatchIdxRef.current = groups.length;
-          // Expand the last batch by default
           setExpandedBatches(new Set([`b${groups.length - 1}`]));
         }
       })
@@ -103,6 +112,50 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
   const selectedQ = allQuestions[currentIdx];
   const resp = responses[selectedId] || {};
   const answeredCount = Object.values(responses).filter(r => r.draft?.trim() || r.result).length;
+
+  // Compute score breakdown from graded responses
+  const scoreStats = useMemo(() => {
+    let correct = 0, wrong = 0, partial = 0;
+    allQuestions.forEach(q => {
+      const r = responses[q.id];
+      if (!r?.result) return;
+      if (q.type === 'mcq') {
+        if (r.result.correct) correct++; else wrong++;
+      } else {
+        if (r.result.score === 'correct') correct++;
+        else if (r.result.score === 'partial') partial++;
+        else wrong++;
+      }
+    });
+    const graded = correct + wrong + partial;
+    const scorePercent = graded > 0 ? Math.round((correct / graded) * 100) : 0;
+    return { correct, wrong, partial, graded, scorePercent };
+  }, [responses, allQuestions]);
+
+  // Auto-save results the first time the summary screen is shown
+  useEffect(() => {
+    if (!showSummary || savedRef.current || !session) return;
+    savedRef.current = true;
+    api.patch(`/sessions/${id}/complete`, {
+      score_summary: {
+        ...scoreStats,
+        skipped: skipped.size,
+        total: allQuestions.length,
+        skippedIds: [...skipped],
+        responses,
+      },
+    }).catch(() => {});
+  }, [showSummary]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleRetake = () => {
+    const fresh = {};
+    allQuestions.forEach(q => { fresh[q.id] = { draft: '', result: null, grading: false }; });
+    setResponses(fresh);
+    setSkipped(new Set());
+    setShowSummary(false);
+    setSelectedId(allQuestions[0]?.id);
+    savedRef.current = false;
+  };
 
   const updateDraft = val => setResponses(p => ({ ...p, [selectedId]: { ...p[selectedId], draft: val } }));
 
@@ -201,46 +254,83 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
           <div className="sess-left-scroll">
             {showSummary ? (
               <div className="sess-summary">
-                <div style={{ textAlign: 'center', marginBottom: 32 }}>
-                  <h1 style={{ fontSize: 28, fontWeight: 900, color: 'var(--text-primary)' }}>Session Summary</h1>
-                  <p style={{ color: 'var(--text-secondary)', marginTop: 6 }}>Review your progress before finishing.</p>
+
+                {/* Score hero */}
+                <div className="sess-summary-hero">
+                  <div className="sess-score-ring" style={{
+                    '--score-pct': `${scoreStats.scorePercent}`,
+                    borderColor: scoreStats.scorePercent >= 70 ? 'var(--success)' : scoreStats.scorePercent >= 40 ? 'var(--accent)' : 'var(--danger)',
+                  }}>
+                    <span className="sess-score-num">{scoreStats.scorePercent}%</span>
+                    <span className="sess-score-lbl">Score</span>
+                  </div>
+                  <div>
+                    <h1 style={{ fontSize: 24, fontWeight: 900, color: 'var(--text-primary)', marginBottom: 4 }}>
+                      {scoreStats.scorePercent >= 70 ? '🎉 Great work!' : scoreStats.scorePercent >= 40 ? '📚 Keep practising!' : '💪 Keep going!'}
+                    </h1>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
+                      {session?.course_name} · {allQuestions.length} questions
+                    </p>
+                  </div>
                 </div>
 
-                <div className="sess-summary-stats">
+                {/* Stats grid */}
+                <div className="sess-summary-stats" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
                   {[
-                    { label: 'Answered', val: answeredCount, color: 'var(--success)' },
-                    { label: 'Skipped', val: skipped.size, color: 'var(--accent)' },
-                    { label: 'Unanswered', val: allQuestions.length - answeredCount - skipped.size, color: 'var(--text-muted)' },
+                    { label: 'Correct',   val: scoreStats.correct,  color: 'var(--success)' },
+                    { label: 'Wrong',     val: scoreStats.wrong,    color: 'var(--danger)'  },
+                    { label: 'Partial',   val: scoreStats.partial,  color: 'var(--accent)'  },
+                    { label: 'Skipped',   val: skipped.size,        color: 'var(--text-muted)' },
+                    { label: 'Ungraded',  val: allQuestions.length - scoreStats.graded - skipped.size, color: 'var(--text-muted)' },
                   ].map(s => (
                     <div key={s.label} className="sess-summary-stat">
-                      <span style={{ fontSize: 32, fontWeight: 900, color: s.color }}>{s.val}</span>
-                      <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em', marginTop: 4 }}>{s.label}</span>
+                      <span style={{ fontSize: 26, fontWeight: 900, color: s.color }}>{s.val}</span>
+                      <span style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text-muted)', letterSpacing: '0.05em', marginTop: 4 }}>{s.label}</span>
                     </div>
                   ))}
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {/* Per-question breakdown */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {allQuestions.map((q, i) => {
                     const r = responses[q.id];
-                    const isAns = r?.draft?.trim() || r?.result;
                     const isSk = skipped.has(q.id);
+                    let resultLabel = 'Unanswered';
+                    let resultColor = 'var(--text-muted)';
+                    let badgeCls = 'badge-unanswered';
+                    if (r?.result) {
+                      if (q.type === 'mcq') {
+                        if (r.result.correct) { resultLabel = 'Correct'; resultColor = 'var(--success)'; badgeCls = 'badge-answered'; }
+                        else { resultLabel = 'Wrong'; resultColor = 'var(--danger)'; badgeCls = 'badge-wrong'; }
+                      } else {
+                        if (r.result.score === 'correct')   { resultLabel = 'Correct'; resultColor = 'var(--success)'; badgeCls = 'badge-answered'; }
+                        else if (r.result.score === 'partial') { resultLabel = 'Partial'; resultColor = 'var(--accent)'; badgeCls = 'badge-skipped'; }
+                        else { resultLabel = 'Wrong'; resultColor = 'var(--danger)'; badgeCls = 'badge-wrong'; }
+                      }
+                    } else if (isSk) {
+                      resultLabel = 'Skipped'; resultColor = 'var(--accent)'; badgeCls = 'badge-skipped';
+                    }
                     return (
                       <div key={q.id} className="sess-summary-row">
-                        <span className={`sess-summary-badge ${isAns ? 'badge-answered' : isSk ? 'badge-skipped' : 'badge-unanswered'}`}>{i + 1}</span>
+                        <span className={`sess-summary-badge ${badgeCls}`}>{i + 1}</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{q.question}</p>
-                          <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: isAns ? 'var(--success)' : isSk ? 'var(--accent)' : 'var(--text-muted)' }}>
-                            {isAns ? 'Answered' : isSk ? 'Skipped' : 'Unanswered'}
+                          <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: resultColor, letterSpacing: '0.04em' }}>
+                            {resultLabel}
                           </span>
                         </div>
-                        <button className="btn btn-ghost btn-sm" onClick={() => goTo(q.id)}>Review</button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => { setShowSummary(false); goTo(q.id); }}>Review</button>
                       </div>
                     );
                   })}
                 </div>
 
-                <div style={{ textAlign: 'center', marginTop: 40 }}>
-                  <button className="btn btn-primary" style={{ padding: '14px 40px', fontSize: 14 }} onClick={() => navigate('/')}>
+                {/* Actions */}
+                <div className="sess-summary-actions">
+                  <button className="btn btn-ghost" style={{ flex: 1, justifyContent: 'center', padding: '13px' }} onClick={handleRetake}>
+                    🔄 Retake Quiz
+                  </button>
+                  <button className="btn btn-primary" style={{ flex: 1, justifyContent: 'center', padding: '13px' }} onClick={() => navigate('/')}>
                     Finish &amp; Return Home
                   </button>
                 </div>
