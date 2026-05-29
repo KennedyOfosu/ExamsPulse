@@ -280,61 +280,128 @@ export default function Session({ user, theme, onThemeToggle, collapsed, onColla
                   <h1 className="sess-question-text">{selectedQ.question}</h1>
                 </div>
 
-                {/* Mode toggle */}
-                <div className="sess-mode-toggle">
-                  <div className="sess-mode-switch">
-                    {['text', 'code'].map(m => (
-                      <button key={m} onClick={() => setAnswerMode(m)}
-                        className={`sess-mode-btn ${answerMode === m ? 'sess-mode-btn--active' : ''}`}>
-                        {m === 'text' ? 'Text Mode' : 'Code Mode'}
-                      </button>
-                    ))}
-                  </div>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Draft auto-saved</span>
-                </div>
-
-                {/* Answer editor — draft is shared across mode switches */}
-                <div className="sess-editor-area">
-                  {answerMode === 'text' ? (
-                    <textarea
-                      className="sess-textarea"
-                      placeholder="Type your answer here..."
-                      value={resp.draft || ''}
-                      onChange={e => updateDraft(e.target.value)}
-                      disabled={resp.grading}
-                    />
-                  ) : (
-                    <CodeLab value={resp.draft || ''} onChange={updateDraft} disabled={resp.grading} />
-                  )}
-                </div>
-
-                {/* Submit */}
-                <button
-                  className={`btn ${resp.draft?.trim() && !resp.grading ? 'btn-primary' : ''}`}
-                  style={{
-                    width: '100%', justifyContent: 'center', padding: '14px',
-                    fontSize: 13, fontWeight: 800, letterSpacing: '0.05em',
-                    ...( (!resp.draft?.trim() || resp.grading) ? { background: 'var(--surface-2)', color: 'var(--text-muted)', border: '1px solid var(--border)', cursor: 'not-allowed' } : {} )
-                  }}
-                  onClick={handleSubmit}
-                  disabled={resp.grading || !resp.draft?.trim()}
-                >
-                  {resp.grading ? 'AI Evaluating…' : 'Submit for AI Feedback'}
-                </button>
-
-                {/* AI result */}
-                {resp.result && (
-                  <div className={`sess-result ${resp.result.score >= 70 ? 'sess-result--correct' : resp.result.score >= 30 ? 'sess-result--partial' : 'sess-result--wrong'}`}>
-                    <div className="sess-result-header">
-                      <span style={{ fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-primary)' }}>AI Feedback</span>
-                      <span className={`badge ${resp.result.score >= 70 ? 'badge-answered-pill' : resp.result.score >= 30 ? 'badge-skipped-pill' : 'badge-wrong-pill'}`}>{resp.result.score}%</span>
+                {selectedQ.type === 'mcq' ? (
+                  /* ── MCQ: clickable A/B/C/D options ── */
+                  <div className="sess-mcq-area">
+                    <div className="qc-options">
+                      {Object.entries(selectedQ.options || {}).map(([key, val]) => {
+                        const isSelected = resp.draft === key;
+                        const isRevealed = !!resp.result;
+                        const isCorrect  = key === selectedQ.answer;
+                        let mod = '';
+                        if (isRevealed) {
+                          if (isCorrect)       mod = 'qc-option--correct';
+                          else if (isSelected) mod = 'qc-option--wrong';
+                          else                 mod = 'qc-option--dim';
+                        } else if (isSelected) {
+                          mod = 'qc-option--selected';
+                        }
+                        return (
+                          <button
+                            key={key}
+                            className={`qc-option ${mod}`}
+                            disabled={isRevealed}
+                            onClick={() => {
+                              if (isRevealed) return;
+                              setResponses(p => ({
+                                ...p,
+                                [selectedId]: {
+                                  ...p[selectedId],
+                                  draft: key,
+                                  result: { correct: key === selectedQ.answer },
+                                },
+                              }));
+                            }}
+                          >
+                            <span className="qc-option-key">{key}</span>
+                            <span className="qc-option-text">{val}</span>
+                            {isRevealed && isCorrect && <span className="qc-badge qc-badge--ok">✓ Correct</span>}
+                            {isRevealed && isSelected && !isCorrect && <span className="qc-badge qc-badge--no">✗ Wrong</span>}
+                          </button>
+                        );
+                      })}
                     </div>
-                    <p style={{ fontSize: 14, lineHeight: 1.6, color: 'var(--text-secondary)', marginBottom: 12 }}>{resp.result.feedback}</p>
-                    <div className="sess-model-answer">
-                      <span style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Model Answer</span>
-                      <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5, fontStyle: 'italic' }}>{selectedQ.answer}</p>
-                    </div>
+
+                    {resp.result && (
+                      <div className={`sess-result ${resp.result.correct ? 'sess-result--correct' : 'sess-result--wrong'}`} style={{ marginTop: 16 }}>
+                        <div className="sess-result-header">
+                          <span style={{ fontSize: 13, fontWeight: 900, color: 'var(--text-primary)' }}>
+                            {resp.result.correct ? '✓ Correct!' : `✗ Wrong — correct answer: ${selectedQ.answer}`}
+                          </span>
+                        </div>
+                        {!resp.result.correct && (
+                          <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>
+                            <strong>{selectedQ.answer}:</strong> {selectedQ.options?.[selectedQ.answer]}
+                          </p>
+                        )}
+                        {selectedQ.explanation && (
+                          <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                            💡 {selectedQ.explanation}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
+                ) : (
+                  /* ── Open questions: textarea / code editor ── */
+                  <>
+                    {/* Mode toggle */}
+                    <div className="sess-mode-toggle">
+                      <div className="sess-mode-switch">
+                        {['text', 'code'].map(m => (
+                          <button key={m} onClick={() => setAnswerMode(m)}
+                            className={`sess-mode-btn ${answerMode === m ? 'sess-mode-btn--active' : ''}`}>
+                            {m === 'text' ? 'Text Mode' : 'Code Mode'}
+                          </button>
+                        ))}
+                      </div>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Draft auto-saved</span>
+                    </div>
+
+                    {/* Answer editor */}
+                    <div className="sess-editor-area">
+                      {answerMode === 'text' ? (
+                        <textarea
+                          className="sess-textarea"
+                          placeholder="Type your answer here..."
+                          value={resp.draft || ''}
+                          onChange={e => updateDraft(e.target.value)}
+                          disabled={resp.grading}
+                        />
+                      ) : (
+                        <CodeLab value={resp.draft || ''} onChange={updateDraft} disabled={resp.grading} />
+                      )}
+                    </div>
+
+                    {/* Submit */}
+                    <button
+                      className={`btn ${resp.draft?.trim() && !resp.grading ? 'btn-primary' : ''}`}
+                      style={{
+                        width: '100%', justifyContent: 'center', padding: '14px',
+                        fontSize: 13, fontWeight: 800, letterSpacing: '0.05em',
+                        ...( (!resp.draft?.trim() || resp.grading) ? { background: 'var(--surface-2)', color: 'var(--text-muted)', border: '1px solid var(--border)', cursor: 'not-allowed' } : {} )
+                      }}
+                      onClick={handleSubmit}
+                      disabled={resp.grading || !resp.draft?.trim()}
+                    >
+                      {resp.grading ? 'AI Evaluating…' : 'Submit for AI Feedback'}
+                    </button>
+
+                    {/* AI result */}
+                    {resp.result && (
+                      <div className={`sess-result ${resp.result.score >= 70 ? 'sess-result--correct' : resp.result.score >= 30 ? 'sess-result--partial' : 'sess-result--wrong'}`}>
+                        <div className="sess-result-header">
+                          <span style={{ fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-primary)' }}>AI Feedback</span>
+                          <span className={`badge ${resp.result.score >= 70 ? 'badge-answered-pill' : resp.result.score >= 30 ? 'badge-skipped-pill' : 'badge-wrong-pill'}`}>{resp.result.score}%</span>
+                        </div>
+                        <p style={{ fontSize: 14, lineHeight: 1.6, color: 'var(--text-secondary)', marginBottom: 12 }}>{resp.result.feedback}</p>
+                        <div className="sess-model-answer">
+                          <span style={{ fontSize: 9, fontWeight: 900, textTransform: 'uppercase', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Model Answer</span>
+                          <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5, fontStyle: 'italic' }}>{selectedQ.answer}</p>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
 
               </div>

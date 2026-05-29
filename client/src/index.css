@@ -4240,6 +4240,12 @@ body.sb-collapsed .main-content {
   min-height: 320px;
 }
 
+.sess-mcq-area {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
 .sess-textarea {
   width: 100%;
   height: 320px;
