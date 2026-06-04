@@ -24,35 +24,48 @@ function formatSize(b) {
   return (b/1048576).toFixed(1) + ' MB';
 }
 
-/* ── Folder card badge config ── */
-const MODE_BADGE = {
-  mcq:          { text: 'MCQ',   bg: '#3b82f6' },
-  essay:        { text: 'Essay', bg: '#f59e0b' },
-  short_answer: { text: 'S/A',   bg: '#10b981' },
-  mixed:        { text: 'Mixed', bg: '#6b7280' },
+/* ── Session card config ── */
+const MODE_DOT = {
+  mcq:          '#3b82f6',
+  essay:        '#f59e0b',
+  short_answer: '#10b981',
+  mixed:        '#6b7280',
+  code:         '#a855f7',
+};
+const MODE_LABEL = {
+  mcq: 'MCQ', essay: 'Essay', short_answer: 'Short Answer', mixed: 'Mixed', code: 'Code',
 };
 
-function FolderCard({ session }) {
-  const badge = MODE_BADGE[session.mode] || MODE_BADGE.mixed;
-  const date  = new Date(session.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+/* Icon components */
+const IconEye   = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
+const IconHide  = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>;
+const IconTrash = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>;
+
+function SessionCard({ session, onHide, onDelete, navigate }) {
+  const dotColor  = MODE_DOT[session.mode]   || MODE_DOT.mixed;
+  const modeLabel = MODE_LABEL[session.mode] || session.mode;
+  const qCount    = session.question_count   || session.questions?.length || '?';
+  const date      = new Date(session.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const score     = session.score_summary?.scorePercent;
   return (
-    <a href={`/session/${session.id}`} className="session-folder-card" title={session.course_name}>
-      <div className="folder-icon-wrap">
-        <svg width="120" height="94" viewBox="0 0 120 94" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect x="4" y="24" width="112" height="66" rx="9" fill="#323232"/>
-          <path d="M4 24 Q4 15 13 15 L44 15 Q52 15 56 24 Z" fill="#323232"/>
-          <rect x="26" y="9" width="62" height="30" rx="5" fill="#b0b0b0" transform="rotate(-5 57 24)"/>
-          <rect x="32" y="7" width="62" height="30" rx="5" fill="#cccccc" transform="rotate(3 63 22)"/>
-          <rect x="4" y="32" width="112" height="58" rx="9" fill="#404040"/>
-          <rect x="4" y="32" width="112" height="20" rx="9" fill="white" opacity="0.06"/>
-          <rect x="10" y="70" width="38" height="16" rx="8" fill={badge.bg} opacity="0.9"/>
-          <text x="29" y="81" textAnchor="middle" fill="white" fontSize="8.5" fontWeight="700"
-            fontFamily="Inter,system-ui,sans-serif">{badge.text}</text>
-        </svg>
+    <div className="sc-row">
+      <button className="sc-main" onClick={() => navigate(`/session/${session.id}`)}>
+        <span className="sc-dot" style={{ background: dotColor }} />
+        <span className="sc-name">{session.course_name || 'Untitled'}</span>
+        <span className="sc-meta">{qCount}Q · {modeLabel} · {date}{score != null ? ` · ${score}%` : ''}</span>
+      </button>
+      <div className="sc-actions">
+        <button className="sc-icon-btn" title="Open session" onClick={() => navigate(`/session/${session.id}`)}>
+          <IconEye />
+        </button>
+        <button className="sc-icon-btn" title="Hide from list" onClick={() => onHide(session.id)}>
+          <IconHide />
+        </button>
+        <button className="sc-icon-btn sc-icon-btn--danger" title="Delete session" onClick={() => onDelete(session.id)}>
+          <IconTrash />
+        </button>
       </div>
-      <div className="folder-name">{session.course_name || 'Untitled'}</div>
-      <div className="folder-meta">{date}</div>
-    </a>
+    </div>
   );
 }
 
@@ -77,10 +90,28 @@ export default function Dashboard({ user, theme, onThemeToggle, collapsed, onCol
   const [showTypeModal, setShowTypeModal]     = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successSessionId, setSuccessSessionId] = useState(null);
+  const [hiddenIds, setHiddenIds] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('ep-hidden-sessions') || '[]')); }
+    catch { return new Set(); }
+  });
 
   useEffect(() => {
     api.get('/sessions').then(r => setSessions(r.data)).catch(() => {});
   }, []);
+
+  const handleHide = (sid) => {
+    const next = new Set(hiddenIds).add(sid);
+    setHiddenIds(next);
+    localStorage.setItem('ep-hidden-sessions', JSON.stringify([...next]));
+  };
+
+  const handleDeleteSession = async (sid) => {
+    if (!confirm('Delete this session permanently?')) return;
+    await api.delete(`/sessions/${sid}`).catch(() => {});
+    setSessions(p => p.filter(s => s.id !== sid));
+  };
+
+  const visibleSessions = sessions.filter(s => !hiddenIds.has(s.id));
 
   // Close modals on outside click
   useEffect(() => {
@@ -317,6 +348,22 @@ export default function Dashboard({ user, theme, onThemeToggle, collapsed, onCol
             <p className="arena-status-line">
               {stage === 'uploading' ? `📤 Uploading ${files.length} file${files.length>1?'s':''}…` : '🤖 AI is generating your questions…'}
             </p>
+          )}
+
+          {/* Sessions list */}
+          {visibleSessions.length > 0 && (
+            <div className="sc-list">
+              <div className="sc-list-title">Recent Sessions</div>
+              {visibleSessions.map(s => (
+                <SessionCard
+                  key={s.id}
+                  session={s}
+                  onHide={handleHide}
+                  onDelete={handleDeleteSession}
+                  navigate={navigate}
+                />
+              ))}
+            </div>
           )}
 
         </div>
